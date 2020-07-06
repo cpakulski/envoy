@@ -22,7 +22,7 @@ public:
     callbacks_ = &callbacks;
   }
 
-  virtual std::string protocol() const { return "starttls"; }
+  virtual std::string protocol() const { return TransportProtocolNames::get().StartTls; }
 
   virtual absl::string_view failureReason() const { return absl::string_view(); }
 
@@ -43,6 +43,7 @@ public:
   virtual Network::IoResult doWrite(Buffer::Instance& buffer, bool end_stream);
 
   virtual void onConnected() { raw_socket_->onConnected(); }
+  virtual bool sslOn();
 
   virtual Ssl::ConnectionInfoConstSharedPtr ssl() const {
     if (passthrough_)
@@ -58,6 +59,8 @@ private:
 
   std::string command_buffer_;
   std::string response_buffer_;
+
+  bool switch_to_ssl_{false};
 };
 
 class ServerStartTlsSocketFactory : public Network::TransportSocketFactory,

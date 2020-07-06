@@ -11,43 +11,13 @@ using absl::ascii_isdigit;
 
 Network::IoResult StartTlsSocket::doRead(Buffer::Instance& buffer) {
   ENVOY_LOG(trace, "starttls: doRead ({}) {}", buffer.length(), buffer.toString());
-  Network::IoResult result;
 
+  buffer.drain(buffer.length());
   if (passthrough_) {
     return passthrough_->doRead(buffer);
-  }
-
-  Envoy::Buffer::OwnedImpl local_buffer;
-  result = raw_socket_->doRead(local_buffer);
-  buffer.add(local_buffer);
-
-  ENVOY_LOG(debug, "starttls: local_buffer {}", local_buffer.toString());
-
-  // absl::StrAppend(&command_buffer_, local_buffer.toString());
-
-  uint32_t code = buffer.peekBEInt<uint32_t>(4);
-  // Startup message with 1234 in the most significant 16 bits
-  // indicate request to encrypt (SSLRequest).
-  if (code == 0x4D2162F) {
-    ENVOY_LOG(debug, "starttls: SSL request sent");
-
-    Envoy::Buffer::OwnedImpl outbuf;
-    outbuf.add("S");
-    raw_socket_->doWrite(outbuf, false);
-    buffer.drain(buffer.length());
-    ssl_socket_->setTransportSocketCallbacks(*callbacks_);
-    ssl_socket_->onConnected();
-
-    passthrough_ = std::move(ssl_socket_);
-    raw_socket_.reset();
   } else {
-    // go to passthrough mode
-    ENVOY_LOG(trace, "starttls: passthrough default to raw_socket");
-    passthrough_ = std::move(raw_socket_);
-    ssl_socket_.reset();
+    return raw_socket_->doRead(buffer);
   }
-
-  return result;
 }
 
 Network::IoResult StartTlsSocket::doWrite(Buffer::Instance& buffer, bool end_stream) {
@@ -57,12 +27,30 @@ Network::IoResult StartTlsSocket::doWrite(Buffer::Instance& buffer, bool end_str
     return passthrough_->doWrite(buffer, end_stream);
   }
 
-  Envoy::Buffer::OwnedImpl local;
-  local.move(buffer);
+  Network::IoResult result = raw_socket_->doWrite(buffer, end_stream);
+  result.bytes_processed_ = buffer.length();
 
-  Network::IoResult result = raw_socket_->doWrite(local, end_stream);
-  result.bytes_processed_ = local.length();
+  if (switch_to_ssl_) {
+    if (!passthrough_) {
+      ssl_socket_->setTransportSocketCallbacks(*callbacks_);
+      ssl_socket_->onConnected();
+      passthrough_ = std::move(ssl_socket_);
+      raw_socket_.reset();
+    }
+  }
+
   return result;
+}
+
+/*
+ * Indicate that transport socket should switch to SSL.
+ * This will happen after the next write.
+ * The switch cannot be done in-place here, because it may be called from upstream filter and in
+ * that case we are in the middle of a transaction.
+ * */
+bool StartTlsSocket::sslOn() {
+  switch_to_ssl_ = true;
+  return true;
 }
 
 // TODO: right now this just expects DownstreamTlsContext in

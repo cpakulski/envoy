@@ -26,6 +26,7 @@ public:
   Network::IoResult doWrite(Buffer::Instance& buffer, bool end_stream) override;
   void onConnected() override;
   Ssl::ConnectionInfoConstSharedPtr ssl() const override;
+  bool sslOn() override { return false; }
 
 private:
   SocketTapConfigSharedPtr config_;

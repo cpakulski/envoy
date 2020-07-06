@@ -182,6 +182,14 @@ bool DecoderImpl::parseMessage(Buffer::Instance& data) {
     // Startup message with 1234 in the most significant 16 bits
     // indicate request to encrypt.
     if (code >= 0x04d20000) {
+      // Catch SSL request
+      if (code == 0x4D2162F) {
+        // to do - check config whether it is allowed and if yes, reply to upgrade to SSL
+        ENVOY_LOG(trace, "postgres_proxy: Request to switch to SSL.");
+        data.drain(data.length());
+        callbacks_->onSSLRequest();
+        return false;
+      }
       ENVOY_LOG(trace, "postgres_proxy: detected encrypted traffic.");
       encrypted_ = true;
       startup_ = false;

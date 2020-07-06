@@ -132,6 +132,8 @@ protected:
       const StreamInfo::StreamInfo& streamInfo() const override { return stream_info_; }
       void setDelayedCloseTimeout(std::chrono::milliseconds) override {}
       absl::string_view transportFailureReason() const override { return EMPTY_STRING; }
+      std::string transportProtocol() const override { return EMPTY_STRING; }
+      bool sslOn() override { return false; }
 
       SyntheticReadCallbacks& parent_;
       StreamInfo::StreamInfoImpl stream_info_;

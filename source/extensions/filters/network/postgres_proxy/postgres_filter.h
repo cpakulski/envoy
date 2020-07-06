@@ -101,8 +101,9 @@ public:
   void incTransactions() override;
   void incTransactionsCommit() override;
   void incTransactionsRollback() override;
+  bool onSSLRequest() override;
 
-  void doDecode(Buffer::Instance& data, bool);
+  Network::FilterStatus doDecode(Buffer::Instance& data, bool);
   DecoderPtr createDecoder(DecoderCallbacks* callbacks);
   void setDecoder(std::unique_ptr<Decoder> decoder) { decoder_ = std::move(decoder); }
   Decoder* getDecoder() const { return decoder_.get(); }
@@ -118,6 +119,7 @@ private:
   Buffer::OwnedImpl frontend_buffer_;
   Buffer::OwnedImpl backend_buffer_;
   std::unique_ptr<Decoder> decoder_;
+  Network::FilterStatus ret_code_;
 };
 
 } // namespace PostgresProxy

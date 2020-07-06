@@ -39,6 +39,8 @@ public:
 
   enum class ErrorType { Error, Fatal, Panic, Unknown };
   virtual void incErrors(ErrorType) PURE;
+
+  virtual bool onSSLRequest() PURE;
 };
 
 // Postgres message decoder.

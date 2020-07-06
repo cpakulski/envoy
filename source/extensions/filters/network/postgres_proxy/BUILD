@@ -33,6 +33,7 @@ envoy_cc_library(
         "//include/envoy/stats:stats_macros",
         "//source/common/buffer:buffer_lib",
         "//source/common/network:filter_lib",
+        "//source/extensions/transport_sockets:well_known_names",
     ],
 )
 

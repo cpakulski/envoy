@@ -4,6 +4,7 @@
 #include "envoy/network/connection.h"
 
 #include "extensions/filters/network/postgres_proxy/postgres_decoder.h"
+#include "extensions/transport_sockets/well_known_names.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -21,13 +22,9 @@ PostgresFilter::PostgresFilter(PostgresFilterConfigSharedPtr config) : config_{c
 
 // Network::ReadFilter
 Network::FilterStatus PostgresFilter::onData(Buffer::Instance& data, bool) {
-  ENVOY_CONN_LOG(trace, "echo: got {} bytes", read_callbacks_->connection(), data.length());
-
   // Frontend Buffer
   frontend_buffer_.add(data);
-  doDecode(frontend_buffer_, true);
-
-  return Network::FilterStatus::Continue;
+  return doDecode(frontend_buffer_, true);
 }
 
 Network::FilterStatus PostgresFilter::onNewConnection() { return Network::FilterStatus::Continue; }
@@ -38,12 +35,16 @@ void PostgresFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks&
 
 // Network::WriteFilter
 Network::FilterStatus PostgresFilter::onWrite(Buffer::Instance& data, bool) {
-
   // Backend Buffer
+  // This is a hack for now. When we detect that stream should switch to SSL,
+  // we send 1-byte reply to the client confirming the switch to SSL.
+  // We reply using connection().write. The reply will traverse all filters
+  // in the chain including this one.
+  if (data.length() == 1) {
+    return Network::FilterStatus::Continue;
+  }
   backend_buffer_.add(data);
-  doDecode(backend_buffer_, false);
-
-  return Network::FilterStatus::Continue;
+  return doDecode(backend_buffer_, false);
 }
 
 DecoderPtr PostgresFilter::createDecoder(DecoderCallbacks* callbacks) {
@@ -159,12 +160,37 @@ void PostgresFilter::incStatements(StatementType type) {
   }
 }
 
-void PostgresFilter::doDecode(Buffer::Instance& data, bool frontend) {
+bool PostgresFilter::onSSLRequest() {
+  ret_code_ = Network::FilterStatus::StopIteration;
+
+  Buffer::OwnedImpl outbuf;
+  outbuf.add("S");
+  read_callbacks_->connection().write(outbuf, false);
+  ASSERT(outbuf.length() == 0);
+  // std::cout << read_callbacks_->connection().transportProtocol() << std::endl;
+  if (read_callbacks_->connection().transportProtocol() ==
+      TransportSockets::TransportProtocolNames::get().StartTls) {
+    // We run on top of the `STARTTLS` socket and can ask it to convert to SSL.
+    read_callbacks_->connection().sslOn();
+    return true;
+  }
+
+  return false;
+}
+
+Network::FilterStatus PostgresFilter::doDecode(Buffer::Instance& data, bool frontend) {
   // Keep processing data until buffer is empty or decoder says
   // that it cannot process data in the buffer.
+  //
+  // Initialize `ret_code_`. It may be changed by a decoder's onData
+  // when it invokes a callback.
+  ret_code_ = Network::FilterStatus::Continue;
+
   while ((0 < data.length()) && (decoder_->onData(data, frontend))) {
     ;
   }
+
+  return ret_code_;
 }
 
 } // namespace PostgresProxy
