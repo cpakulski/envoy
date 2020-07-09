@@ -48,6 +48,7 @@ envoy_cc_library(
         "//source/common/common:empty_string",
         "//source/common/common:minimal_logger_lib",
         "//source/common/common:thread_annotations",
+        "//source/extensions/transport_sockets:well_known_names",
         #        "//source/extensions/transport_sockets/tls:ssl_socket_lib",
         #        "//source/common/network:raw_buffer_socket_lib",
     ],

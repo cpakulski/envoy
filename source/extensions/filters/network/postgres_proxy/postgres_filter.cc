@@ -171,7 +171,7 @@ bool PostgresFilter::onSSLRequest() {
   if (read_callbacks_->connection().transportProtocol() ==
       TransportSockets::TransportProtocolNames::get().StartTls) {
     // We run on top of the `STARTTLS` socket and can ask it to convert to SSL.
-    read_callbacks_->connection().sslOn();
+    read_callbacks_->connection().startSecureTransport();
     return true;
   }
 

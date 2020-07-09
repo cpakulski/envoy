@@ -304,7 +304,7 @@ public:
 
   virtual std::string transportProtocol() const PURE;
 
-  virtual bool sslOn() PURE;
+  virtual bool startSecureTransport() PURE;
 };
 
 using ConnectionPtr = std::unique_ptr<Connection>;

@@ -154,7 +154,7 @@ public:
    */
   virtual Ssl::ConnectionInfoConstSharedPtr ssl() const PURE;
 
-  virtual bool sslOn() PURE;
+  virtual bool startSecureTransport() PURE;
 };
 
 using TransportSocketPtr = std::unique_ptr<TransportSocket>;

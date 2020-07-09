@@ -48,7 +48,7 @@ Network::IoResult StartTlsSocket::doWrite(Buffer::Instance& buffer, bool end_str
  * The switch cannot be done in-place here, because it may be called from upstream filter and in
  * that case we are in the middle of a transaction.
  * */
-bool StartTlsSocket::sslOn() {
+bool StartTlsSocket::startSecureTransport() {
   switch_to_ssl_ = true;
   return true;
 }

@@ -5,6 +5,8 @@
 #include "common/buffer/buffer_impl.h"
 #include "common/common/logger.h"
 
+#include "extensions/transport_sockets/well_known_names.h"
+
 namespace Envoy {
 namespace Extensions {
 namespace TransportSockets {
@@ -43,7 +45,7 @@ public:
   virtual Network::IoResult doWrite(Buffer::Instance& buffer, bool end_stream);
 
   virtual void onConnected() { raw_socket_->onConnected(); }
-  virtual bool sslOn();
+  virtual bool startSecureTransport();
 
   virtual Ssl::ConnectionInfoConstSharedPtr ssl() const {
     if (passthrough_)

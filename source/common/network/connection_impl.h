@@ -91,7 +91,7 @@ public:
   const StreamInfo::StreamInfo& streamInfo() const override { return stream_info_; }
   absl::string_view transportFailureReason() const override;
   std::string transportProtocol() const override;
-  bool sslOn() override { return transport_socket_->sslOn(); }
+  bool startSecureTransport() override { return transport_socket_->startSecureTransport(); }
 
   // Network::FilterManagerConnection
   void rawWrite(Buffer::Instance& data, bool end_stream) override;
