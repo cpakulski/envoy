@@ -286,7 +286,8 @@ TEST_P(SslCertficateIntegrationTest, ServerEcdsaClientRsaOnly) {
   server_rsa_cert_ = false;
   server_ecdsa_cert_ = true;
   initialize();
-  auto codec_client = makeRawHttpConnection(makeSslClientConnection(rsaOnlyClientOptions()));
+  auto codec_client =
+      makeRawHttpConnection(makeSslClientConnection(rsaOnlyClientOptions()), absl::nullopt);
   EXPECT_FALSE(codec_client->connected());
   const std::string counter_name = listenerStatPrefix("ssl.connection_error");
   Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
@@ -313,7 +314,8 @@ TEST_P(SslCertficateIntegrationTest, ServerRsaClientEcdsaOnly) {
   client_ecdsa_cert_ = true;
   initialize();
   EXPECT_FALSE(
-      makeRawHttpConnection(makeSslClientConnection(ecdsaOnlyClientOptions()))->connected());
+      makeRawHttpConnection(makeSslClientConnection(ecdsaOnlyClientOptions()), absl::nullopt)
+          ->connected());
   const std::string counter_name = listenerStatPrefix("ssl.connection_error");
   Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
   test_server_->waitForCounterGe(counter_name, 1);
@@ -394,10 +396,8 @@ public:
   envoy::extensions::transport_sockets::tap::v3::Tap
   createTapConfig(const envoy::config::core::v3::TransportSocket& inner_transport) {
     envoy::extensions::transport_sockets::tap::v3::Tap tap_config;
-    tap_config.mutable_common_config()
-        ->mutable_static_config()
-        ->mutable_match_config()
-        ->set_any_match(true);
+    tap_config.mutable_common_config()->mutable_static_config()->mutable_match()->set_any_match(
+        true);
     auto* output_config =
         tap_config.mutable_common_config()->mutable_static_config()->mutable_output_config();
     if (max_rx_bytes_.has_value()) {

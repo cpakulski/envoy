@@ -1,5 +1,6 @@
 #include "envoy/common/platform.h"
 #include "envoy/config/core/v3/base.pb.h"
+#include "envoy/network/exception.h"
 
 #include "common/api/os_sys_calls_impl.h"
 #include "common/network/io_socket_handle_impl.h"
@@ -47,7 +48,7 @@ protected:
       auto addr_fd = Network::Test::bindFreeLoopbackPort(version_, Socket::Type::Stream);
       auto addr = addr_fd.first;
       SocketPtr& sock = addr_fd.second;
-      EXPECT_TRUE(SOCKET_VALID(sock->ioHandle().fd()));
+      EXPECT_TRUE(sock->ioHandle().isOpen());
 
       // Confirm that we got a reasonable address and port.
       ASSERT_EQ(Address::Type::Ip, addr->type());

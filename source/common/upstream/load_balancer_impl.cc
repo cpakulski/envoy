@@ -100,7 +100,7 @@ LoadBalancerBase::choosePriority(uint64_t hash, const HealthyLoad& healthy_per_p
 
 LoadBalancerBase::LoadBalancerBase(
     const PrioritySet& priority_set, ClusterStats& stats, Runtime::Loader& runtime,
-    Runtime::RandomGenerator& random,
+    Random::RandomGenerator& random,
     const envoy::config::cluster::v3::Cluster::CommonLbConfig& common_config)
     : stats_(stats), runtime_(runtime), random_(random),
       default_healthy_panic_percent_(PROTOBUF_PERCENT_TO_ROUNDED_INTEGER_OR_DEFAULT(
@@ -342,7 +342,7 @@ LoadBalancerBase::chooseHostSet(LoadBalancerContext* context) {
 
 ZoneAwareLoadBalancerBase::ZoneAwareLoadBalancerBase(
     const PrioritySet& priority_set, const PrioritySet* local_priority_set, ClusterStats& stats,
-    Runtime::Loader& runtime, Runtime::RandomGenerator& random,
+    Runtime::Loader& runtime, Random::RandomGenerator& random,
     const envoy::config::cluster::v3::Cluster::CommonLbConfig& common_config)
     : LoadBalancerBase(priority_set, stats, runtime, random, common_config),
       local_priority_set_(local_priority_set),
@@ -694,7 +694,7 @@ const HostVector& ZoneAwareLoadBalancerBase::hostSourceToHosts(HostsSource hosts
 
 EdfLoadBalancerBase::EdfLoadBalancerBase(
     const PrioritySet& priority_set, const PrioritySet* local_priority_set, ClusterStats& stats,
-    Runtime::Loader& runtime, Runtime::RandomGenerator& random,
+    Runtime::Loader& runtime, Random::RandomGenerator& random,
     const envoy::config::cluster::v3::Cluster::CommonLbConfig& common_config)
     : ZoneAwareLoadBalancerBase(priority_set, local_priority_set, stats, runtime, random,
                                 common_config),
@@ -846,9 +846,11 @@ SubsetSelectorImpl::SubsetSelectorImpl(
     const Protobuf::RepeatedPtrField<std::string>& selector_keys,
     envoy::config::cluster::v3::Cluster::LbSubsetConfig::LbSubsetSelector::
         LbSubsetSelectorFallbackPolicy fallback_policy,
-    const Protobuf::RepeatedPtrField<std::string>& fallback_keys_subset)
+    const Protobuf::RepeatedPtrField<std::string>& fallback_keys_subset,
+    bool single_host_per_subset)
     : selector_keys_(selector_keys.begin(), selector_keys.end()), fallback_policy_(fallback_policy),
-      fallback_keys_subset_(fallback_keys_subset.begin(), fallback_keys_subset.end()) {
+      fallback_keys_subset_(fallback_keys_subset.begin(), fallback_keys_subset.end()),
+      single_host_per_subset_(single_host_per_subset) {
 
   if (fallback_policy_ !=
       envoy::config::cluster::v3::Cluster::LbSubsetConfig::LbSubsetSelector::KEYS_SUBSET) {

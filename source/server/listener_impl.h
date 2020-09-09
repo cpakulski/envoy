@@ -13,6 +13,7 @@
 #include "envoy/server/listener_manager.h"
 #include "envoy/stats/scope.h"
 
+#include "common/common/basic_resource_impl.h"
 #include "common/common/logger.h"
 #include "common/init/manager_impl.h"
 #include "common/init/target_impl.h"
@@ -105,7 +106,7 @@ public:
   Http::Context& httpContext() override;
   Init::Manager& initManager() override;
   const LocalInfo::LocalInfo& localInfo() const override;
-  Envoy::Runtime::RandomGenerator& random() override;
+  Envoy::Random::RandomGenerator& random() override;
   Envoy::Runtime::Loader& runtime() override;
   Stats::Scope& scope() override;
   Singleton::Manager& singletonManager() override;
@@ -171,7 +172,7 @@ public:
   Http::Context& httpContext() override;
   Init::Manager& initManager() override;
   const LocalInfo::LocalInfo& localInfo() const override;
-  Envoy::Runtime::RandomGenerator& random() override;
+  Envoy::Random::RandomGenerator& random() override;
   Envoy::Runtime::Loader& runtime() override;
   Stats::Scope& scope() override;
   Singleton::Manager& singletonManager() override;
@@ -301,10 +302,16 @@ public:
   Network::ActiveUdpListenerFactory* udpListenerFactory() override {
     return udp_listener_factory_.get();
   }
+  Network::UdpPacketWriterFactoryOptRef udpPacketWriterFactory() override {
+    return Network::UdpPacketWriterFactoryOptRef(std::ref(*udp_writer_factory_));
+  }
   Network::ConnectionBalancer& connectionBalancer() override { return *connection_balancer_; }
+
+  ResourceLimit& openConnections() override { return *open_connections_; }
   const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const override {
     return access_logs_;
   }
+  uint32_t tcpBacklogSize() const override { return tcp_backlog_size_; }
   Init::Manager& initManager();
   envoy::config::core::v3::TrafficDirection direction() const override {
     return config().traffic_direction();
@@ -331,13 +338,14 @@ private:
    * Create a new listener from an existing listener and the new config message if the in place
    * filter chain update is decided. Should be called only by newListenerWithFilterChain().
    */
-  ListenerImpl(const ListenerImpl& origin, const envoy::config::listener::v3::Listener& config,
+  ListenerImpl(ListenerImpl& origin, const envoy::config::listener::v3::Listener& config,
                const std::string& version_info, ListenerManagerImpl& parent,
                const std::string& name, bool added_via_api, bool workers_started, uint64_t hash,
                uint32_t concurrency);
   // Helpers for constructor.
   void buildAccessLog();
   void buildUdpListenerFactory(Network::Socket::Type socket_type, uint32_t concurrency);
+  void buildUdpWriterFactory(Network::Socket::Type socket_type);
   void buildListenSocketOptions(Network::Socket::Type socket_type);
   void createListenerFilterFactories(Network::Socket::Type socket_type);
   void validateFilterChains(Network::Socket::Type socket_type);
@@ -364,6 +372,7 @@ private:
   const bool added_via_api_;
   const bool workers_started_;
   const uint64_t hash_;
+  const uint32_t tcp_backlog_size_;
   ProtobufMessage::ValidationVisitor& validation_visitor_;
 
   // A target is added to Server's InitManager if workers_started_ is false.
@@ -383,9 +392,16 @@ private:
   const std::chrono::milliseconds listener_filters_timeout_;
   const bool continue_on_listener_filters_timeout_;
   Network::ActiveUdpListenerFactoryPtr udp_listener_factory_;
+  Network::UdpPacketWriterFactoryPtr udp_writer_factory_;
   Network::ConnectionBalancerPtr connection_balancer_;
   std::shared_ptr<PerListenerFactoryContextImpl> listener_factory_context_;
   FilterChainManagerImpl filter_chain_manager_;
+
+  // Per-listener connection limits are only specified via runtime.
+  //
+  // TODO (tonya11en): Move this functionality into the overload manager.
+  const std::string cx_limit_runtime_key_;
+  std::shared_ptr<BasicResourceLimitImpl> open_connections_;
 
   // This init watcher, if workers_started_ is false, notifies the "parent" listener manager when
   // listener initialization is complete.

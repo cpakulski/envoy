@@ -4,6 +4,7 @@
 # are allowed for any otherwise correctly spelled word.
 ABI
 ACK
+ACL
 AES
 AFAICT
 ALPN
@@ -25,6 +26,10 @@ CAS
 CB
 CDS
 CEL
+DSR
+LTT
+TIDs
+ceil
 CHACHA
 CHLO
 CHMOD
@@ -67,6 +72,7 @@ DRYs
 DS
 DST
 DW
+DWORD
 EADDRINUSE
 EADDRNOTAVAIL
 EAGAIN
@@ -78,14 +84,17 @@ ECMP
 ECONNREFUSED
 EDESTRUCTION
 EDF
+EINPROGRESS
 EINVAL
 ELB
+EMSGSIZE
 ENOTFOUND
 ENOTSUP
 ENV
 EOF
 EOS
 EOY
+EPOLLOUT
 EPOLLRDHUP
 EQ
 ERANGE
@@ -119,6 +128,8 @@ GETting
 GLB
 GOAWAY
 GRPC
+GRO
+GSO
 GSS
 GTEST
 GURL
@@ -140,6 +151,7 @@ IDL
 IETF
 INADDR
 INET
+INVAL
 IO
 IOS
 IP
@@ -203,6 +215,7 @@ NS
 NUL
 Nilsson
 Nonhashable
+Oauth
 OCSP
 OK
 OOM
@@ -278,6 +291,7 @@ SIGINT
 SIGPIPE
 SIGSEGV
 SIGTERM
+SMTP
 SNI
 SOTW
 SPD
@@ -337,9 +351,13 @@ WASM
 WAVM
 WIP
 WKT
+WRONGPASS
 WRR
 WS
 WSA
+WSABUF
+WSAEINVAL
+WSS
 Welford's
 Wi
 XDS
@@ -409,6 +427,7 @@ bazel
 behaviour
 benchmarked
 bidi
+bignum
 bitfield
 bitset
 bitwise
@@ -419,9 +438,11 @@ bool
 boolean
 booleans
 bools
+boringssl
 borks
 broadcasted
 buf
+buflen
 bugprone
 builtin
 builtins
@@ -429,6 +450,8 @@ bulkstrings
 bursty
 bytecode
 bytestream
+bytestring
+cacheable
 cacheability
 callee
 callsite
@@ -606,6 +629,7 @@ func
 functor
 functors
 gRPC
+gateway
 gcov
 genrule
 getaddrinfo
@@ -623,6 +647,7 @@ gmock
 goog
 google
 goto
+gso
 gzip
 hackery
 hacky
@@ -663,6 +688,7 @@ inflight
 -ing
 init
 initializer
+initializers
 inlined
 inlining
 inobservability
@@ -770,6 +796,7 @@ mutexes
 mux
 muxed
 mysql
+namelen
 nameserver
 namespace
 namespaces
@@ -794,6 +821,7 @@ nullopt
 nullptr
 num
 numkeys
+oauth
 observability
 ocagent
 offsetof
@@ -848,6 +876,7 @@ postfix
 postfixes
 postgres
 postgresql
+pragma
 pre
 preallocate
 preallocating
@@ -859,6 +888,8 @@ precompute
 precomputed
 predeclared
 prefetch
+prefetched
+prefetches
 preflight
 preorder
 prepend
@@ -905,6 +936,7 @@ realloc
 rebalanced
 rebalancing
 rebuffer
+rebuilder
 reconnection
 recurse
 recv
@@ -935,6 +967,7 @@ repeatability
 reperform
 repicked
 repo
+reproducibility
 requirepass
 reselecting
 reserialize
@@ -950,6 +983,8 @@ restarter
 resync
 retriable
 retriggers
+revalidated
+revalidation
 rmdir
 rocketmq
 rewriter
@@ -971,8 +1006,10 @@ sanitizer
 satisfiable
 scalability
 sched
+schedulable
 schemas
 scopekey
+secp
 sendmsg
 sendmmsg
 sendto
@@ -1101,7 +1138,9 @@ tuples
 typedef
 typeid
 typesafe
+uber
 ucontext
+udpa
 uint
 un-
 unacked
@@ -1153,8 +1192,7 @@ vptr
 wakeup
 wakeups
 websocket
-whitelist
-whitelisted
+wepoll
 whitespace
 whitespaces
 wildcard

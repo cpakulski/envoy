@@ -133,6 +133,19 @@ void H2FuzzIntegrationTest::sendFrame(const test::integration::H2TestFrame& prot
     h2_frame = Http2Frame::makePostRequest(stream_idx, host, path);
     break;
   }
+  case test::integration::H2TestFrame::kMetadata: {
+    const Http2Frame::MetadataFlags metadata_flags =
+        static_cast<Http2Frame::MetadataFlags>(proto_frame.metadata().flags());
+    const uint32_t stream_idx = proto_frame.metadata().stream_index();
+    Http::MetadataMap metadata_map;
+    for (const auto& metadataPair : proto_frame.metadata().metadata().metadata()) {
+      metadata_map.insert(metadataPair);
+    }
+    ENVOY_LOG_MISC(trace, "Sending metadata frame.");
+    h2_frame =
+        Http2Frame::makeMetadataFrameFromMetadataMap(stream_idx, metadata_map, metadata_flags);
+    break;
+  }
   case test::integration::H2TestFrame::kGeneric: {
     const absl::string_view frame_bytes = proto_frame.generic().frame_bytes();
     ENVOY_LOG_MISC(trace, "Sending generic frame");
@@ -151,7 +164,6 @@ void H2FuzzIntegrationTest::replay(const test::integration::H2CaptureFuzzTestCas
                                    bool ignore_response) {
   PERSISTENT_FUZZ_VAR bool initialized = [this]() -> bool {
     initialize();
-    fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
     return true;
   }();
   UNREFERENCED_PARAMETER(initialized);
@@ -173,11 +185,11 @@ void H2FuzzIntegrationTest::replay(const test::integration::H2CaptureFuzzTestCas
     switch (event.event_selector_case()) {
     case test::integration::Event::kDownstreamSendEvent: {
       auto downstream_write_func = [&](const Http2Frame& h2_frame) -> void {
-        tcp_client->write(std::string(h2_frame), false, false);
+        ASSERT_TRUE(tcp_client->write(std::string(h2_frame), false, false));
       };
       if (!preamble_sent) {
         // Start H2 session - send hello string
-        tcp_client->write(Http2Frame::Preamble, false, false);
+        ASSERT_TRUE(tcp_client->write(Http2Frame::Preamble, false, false));
         preamble_sent = true;
       }
       for (auto& frame : event.downstream_send_event().h2_frames()) {
@@ -244,7 +256,7 @@ void H2FuzzIntegrationTest::replay(const test::integration::H2CaptureFuzzTestCas
       AssertionResult result = fake_upstream_connection->close();
       RELEASE_ASSERT(result, result.message());
     }
-    AssertionResult result = fake_upstream_connection->waitForDisconnect(true);
+    AssertionResult result = fake_upstream_connection->waitForDisconnect();
     RELEASE_ASSERT(result, result.message());
   }
   if (tcp_client->connected()) {

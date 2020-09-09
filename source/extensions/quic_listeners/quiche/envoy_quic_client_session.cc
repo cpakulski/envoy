@@ -1,5 +1,7 @@
 #include "extensions/quic_listeners/quiche/envoy_quic_client_session.h"
 
+#include "extensions/quic_listeners/quiche/envoy_quic_utils.h"
+
 namespace Envoy {
 namespace Quic {
 
@@ -44,7 +46,12 @@ void EnvoyQuicClientSession::Initialize() {
 }
 
 void EnvoyQuicClientSession::OnCanWrite() {
+  const uint64_t headers_to_send_old =
+      quic::VersionUsesHttp3(transport_version()) ? 0u : headers_stream()->BufferedDataBytes();
   quic::QuicSpdyClientSession::OnCanWrite();
+  const uint64_t headers_to_send_new =
+      quic::VersionUsesHttp3(transport_version()) ? 0u : headers_stream()->BufferedDataBytes();
+  adjustBytesToSend(headers_to_send_new - headers_to_send_old);
   maybeApplyDelayClosePolicy();
 }
 
@@ -53,7 +60,16 @@ void EnvoyQuicClientSession::OnGoAway(const quic::QuicGoAwayFrame& frame) {
                  quic::QuicErrorCodeToString(frame.error_code), frame.reason_phrase);
   quic::QuicSpdyClientSession::OnGoAway(frame);
   if (http_connection_callbacks_ != nullptr) {
-    http_connection_callbacks_->onGoAway();
+    http_connection_callbacks_->onGoAway(quicErrorCodeToEnvoyErrorCode(frame.error_code));
+  }
+}
+
+void EnvoyQuicClientSession::OnHttp3GoAway(uint64_t stream_id) {
+  ENVOY_CONN_LOG(debug, "HTTP/3 GOAWAY received", *this);
+  quic::QuicSpdyClientSession::OnHttp3GoAway(stream_id);
+  if (http_connection_callbacks_ != nullptr) {
+    // HTTP/3 GOAWAY doesn't have an error code field.
+    http_connection_callbacks_->onGoAway(Http::GoAwayErrorCode::NoError);
   }
 }
 

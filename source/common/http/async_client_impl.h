@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "envoy/common/random_generator.h"
 #include "envoy/common/scope_tracker.h"
 #include "envoy/config/core/v3/base.pb.h"
 #include "envoy/config/route/v3/route_components.pb.h"
@@ -47,7 +48,7 @@ public:
   AsyncClientImpl(Upstream::ClusterInfoConstSharedPtr cluster, Stats::Store& stats_store,
                   Event::Dispatcher& dispatcher, const LocalInfo::LocalInfo& local_info,
                   Upstream::ClusterManager& cm, Runtime::Loader& runtime,
-                  Runtime::RandomGenerator& random, Router::ShadowWriterPtr&& shadow_writer,
+                  Random::RandomGenerator& random, Router::ShadowWriterPtr&& shadow_writer,
                   Http::Context& http_context);
   ~AsyncClientImpl() override;
 
@@ -75,7 +76,7 @@ class AsyncStreamImpl : public AsyncClient::Stream,
                         public StreamDecoderFilterCallbacks,
                         public Event::DeferredDeletable,
                         Logger::Loggable<Logger::Id::http>,
-                        LinkedObject<AsyncStreamImpl>,
+                        public LinkedObject<AsyncStreamImpl>,
                         public ScopeTrackedObject {
 public:
   AsyncStreamImpl(AsyncClientImpl& parent, AsyncClient::StreamCallbacks& callbacks,
@@ -151,10 +152,17 @@ private:
       return absl::nullopt;
     }
     absl::optional<std::chrono::milliseconds> maxInterval() const override { return absl::nullopt; }
+    const std::vector<Router::ResetHeaderParserSharedPtr>& resetHeaders() const override {
+      return reset_headers_;
+    }
+    std::chrono::milliseconds resetMaxInterval() const override {
+      return std::chrono::milliseconds(300000);
+    }
 
     const std::vector<uint32_t> retriable_status_codes_{};
     const std::vector<Http::HeaderMatcherSharedPtr> retriable_headers_{};
     const std::vector<Http::HeaderMatcherSharedPtr> retriable_request_headers_{};
+    const std::vector<Router::ResetHeaderParserSharedPtr> reset_headers_{};
   };
 
   struct NullConfig : public Router::Config {
@@ -360,10 +368,14 @@ private:
                       const absl::optional<Grpc::Status::GrpcStatus> grpc_status,
                       absl::string_view details) override {
     stream_info_.setResponseCodeDetails(details);
+    if (encoded_response_headers_) {
+      resetStream();
+      return;
+    }
     Utility::sendLocalReply(
         remote_closed_,
         Utility::EncodeFunctions{
-            nullptr,
+            nullptr, nullptr,
             [this, modify_headers](ResponseHeaderMapPtr&& headers, bool end_stream) -> void {
               if (modify_headers != nullptr) {
                 modify_headers(*headers);
@@ -414,6 +426,7 @@ private:
   bool local_closed_{};
   bool remote_closed_{};
   Buffer::InstancePtr buffered_body_;
+  bool encoded_response_headers_{};
   bool is_grpc_request_{};
   bool is_head_request_{false};
   bool send_xff_{true};

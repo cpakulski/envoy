@@ -1,7 +1,7 @@
 #include "test/fuzz/utility.h"
 #include "test/mocks/buffer/mocks.h"
 #include "test/mocks/http/mocks.h"
-#include "test/mocks/server/mocks.h"
+#include "test/mocks/server/factory_context.h"
 #include "test/mocks/stream_info/mocks.h"
 
 namespace Envoy {
@@ -53,6 +53,8 @@ protected:
   void sendTrailers(FilterType* filter, const test::fuzz::HttpData& data) = delete;
 
 private:
+  // This keeps track of when a filter will stop decoding due to direct responses.
+  bool enabled_ = true;
   NiceMock<Server::Configuration::MockFactoryContext> factory_context_;
   NiceMock<Http::MockFilterChainFactoryCallbacks> filter_callback_;
   std::shared_ptr<Network::MockDnsResolver> resolver_{std::make_shared<Network::MockDnsResolver>()};
@@ -72,13 +74,14 @@ private:
   Http::StreamEncoderFilterSharedPtr encoder_filter_;
   AccessLog::InstanceSharedPtr access_logger_;
 
-  // Headers/trailers need to be saved for the lifetime of the the filter,
+  // Headers/trailers need to be saved for the lifetime of the filter,
   // so save them as member variables.
   // TODO(nareddyt): Use for access logging in a followup PR.
   Http::TestRequestHeaderMapImpl request_headers_;
   Http::TestResponseHeaderMapImpl response_headers_;
   Http::TestRequestTrailerMapImpl request_trailers_;
   Http::TestResponseTrailerMapImpl response_trailers_;
+  Http::TestResponseTrailerMapImpl encoded_trailers_;
 };
 
 } // namespace HttpFilters

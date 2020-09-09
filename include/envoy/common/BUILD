@@ -16,6 +16,7 @@ envoy_basic_cc_library(
         "platform.h",
         "pure.h",
     ],
+    external_deps = ["abseil_optional"],
     include_prefix = "envoy/common",
 )
 
@@ -31,6 +32,11 @@ envoy_cc_library(
 envoy_cc_library(
     name = "mutex_tracer",
     hdrs = ["mutex_tracer.h"],
+)
+
+envoy_cc_library(
+    name = "random_generator_interface",
+    hdrs = ["random_generator.h"],
 )
 
 envoy_cc_library(

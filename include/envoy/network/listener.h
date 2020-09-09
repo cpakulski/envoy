@@ -7,10 +7,12 @@
 #include "envoy/access_log/access_log.h"
 #include "envoy/api/io_error.h"
 #include "envoy/common/exception.h"
+#include "envoy/common/resource.h"
 #include "envoy/config/core/v3/base.pb.h"
 #include "envoy/network/connection.h"
 #include "envoy/network/connection_balancer.h"
 #include "envoy/network/listen_socket.h"
+#include "envoy/network/udp_packet_writer_handler.h"
 #include "envoy/stats/scope.h"
 
 namespace Envoy {
@@ -134,6 +136,12 @@ public:
   virtual ActiveUdpListenerFactory* udpListenerFactory() PURE;
 
   /**
+   * @return factory pointer if writing on UDP socket, otherwise return
+   * nullptr.
+   */
+  virtual UdpPacketWriterFactoryOptRef udpPacketWriterFactory() PURE;
+
+  /**
    * @return traffic direction of the listener.
    */
   virtual envoy::config::core::v3::TrafficDirection direction() const PURE;
@@ -145,23 +153,38 @@ public:
   virtual ConnectionBalancer& connectionBalancer() PURE;
 
   /**
+   * Open connection resources for this listener.
+   */
+  virtual ResourceLimit& openConnections() PURE;
+
+  /**
    * @return std::vector<AccessLog::InstanceSharedPtr> access logs emitted by the listener.
    */
   virtual const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const PURE;
+
+  /**
+   * @return pending connection backlog for TCP listeners.
+   */
+  virtual uint32_t tcpBacklogSize() const PURE;
 };
 
 /**
  * Callbacks invoked by a listener.
  */
-class ListenerCallbacks {
+class TcpListenerCallbacks {
 public:
-  virtual ~ListenerCallbacks() = default;
+  virtual ~TcpListenerCallbacks() = default;
 
   /**
    * Called when a new connection is accepted.
    * @param socket supplies the socket that is moved into the callee.
    */
   virtual void onAccept(ConnectionSocketPtr&& socket) PURE;
+
+  /**
+   * Called when a new connection is rejected.
+   */
+  virtual void onReject() PURE;
 };
 
 /**
@@ -243,6 +266,12 @@ public:
    * @param error_code supplies the received error on the listener.
    */
   virtual void onReceiveError(Api::IoError::IoErrorCode error_code) PURE;
+
+  /**
+   * Returns the pointer to the udp_packet_writer associated with the
+   * UdpListenerCallback
+   */
+  virtual UdpPacketWriter& udpPacketWriter() PURE;
 };
 
 /**
@@ -294,17 +323,17 @@ public:
    * sender.
    */
   virtual Api::IoCallUint64Result send(const UdpSendData& data) PURE;
+
+  /**
+   * Flushes out remaining buffered data since last call of send().
+   * This is a no-op if the implementation doesn't buffer data while sending.
+   *
+   * @return the error code of the underlying flush api.
+   */
+  virtual Api::IoCallUint64Result flush() PURE;
 };
 
 using UdpListenerPtr = std::unique_ptr<UdpListener>;
-
-/**
- * Thrown when there is a runtime error creating/binding a listener.
- */
-class CreateListenerException : public EnvoyException {
-public:
-  CreateListenerException(const std::string& what) : EnvoyException(what) {}
-};
 
 } // namespace Network
 } // namespace Envoy

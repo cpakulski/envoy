@@ -17,10 +17,11 @@ envoy_extension_cc_test(
     srcs = ["config_test.cc"],
     extension_name = "envoy.transport_sockets.alts",
     deps = [
+        "//source/common/singleton:manager_impl_lib",
         "//source/extensions/transport_sockets/alts:config",
         "//test/mocks/event:event_mocks",
         "//test/mocks/network:network_mocks",
-        "//test/mocks/server:server_mocks",
+        "//test/mocks/server:transport_socket_factory_context_mocks",
     ],
 )
 
@@ -38,6 +39,8 @@ envoy_extension_cc_test(
     name = "tsi_handshaker_test",
     srcs = ["tsi_handshaker_test.cc"],
     extension_name = "envoy.transport_sockets.alts",
+    # Fails intermittantly on local build
+    tags = ["flaky_on_windows"],
     deps = [
         "//include/envoy/event:dispatcher_interface",
         "//source/extensions/transport_sockets/alts:tsi_handshaker",
@@ -78,7 +81,6 @@ envoy_extension_cc_test(
         "grpc_alts_handshaker_proto",
         "grpc_alts_transport_security_common_proto",
     ],
-    tags = ["fails_on_windows"],
     deps = [
         "//source/common/common:utility_lib",
         "//source/common/event:dispatcher_includes",
@@ -89,6 +91,7 @@ envoy_extension_cc_test(
         "//test/integration:http_integration_lib",
         "//test/mocks/runtime:runtime_mocks",
         "//test/mocks/secret:secret_mocks",
+        "//test/mocks/server:server_mocks",
         "//test/test_common:utility_lib",
         "@envoy_api//envoy/config/transport_socket/alts/v2alpha:pkg_cc_proto",
     ],

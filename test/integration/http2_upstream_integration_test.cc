@@ -242,6 +242,9 @@ void Http2UpstreamIntegrationTest::manySimultaneousRequests(uint32_t request_byt
       EXPECT_EQ("503", responses[i]->headers().getStatusValue());
     }
   }
+
+  EXPECT_EQ(0, test_server_->gauge("http2.streams_active")->value());
+  EXPECT_EQ(0, test_server_->gauge("http2.pending_send_bytes")->value());
 }
 
 TEST_P(Http2UpstreamIntegrationTest, ManySimultaneousRequest) {
@@ -369,7 +372,6 @@ typed_config:
 
   // Now send an overly large response body. At some point, too much data will
   // be buffered, the stream will be reset, and the connection will disconnect.
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   upstream_request_->encodeData(1024 * 65, false);
   ASSERT_TRUE(upstream_request_->waitForReset());
   ASSERT_TRUE(fake_upstream_connection_->close());

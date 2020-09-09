@@ -312,11 +312,11 @@ ProtobufTypes::MessagePtr ListenerManagerImpl::dumpListenerConfigs() {
     fillState(*dump_listener, *listener);
   }
 
-  for (const auto& state_and_name : error_state_tracker_) {
+  for (const auto& [error_name, error_state] : error_state_tracker_) {
     DynamicListener* dynamic_listener =
-        getOrCreateDynamicListener(state_and_name.first, *config_dump, listener_map);
+        getOrCreateDynamicListener(error_name, *config_dump, listener_map);
 
-    const envoy::admin::v3::UpdateFailureState& state = *state_and_name.second;
+    const envoy::admin::v3::UpdateFailureState& state = *error_state;
     dynamic_listener->mutable_error_state()->CopyFrom(state);
   }
 
@@ -393,6 +393,17 @@ bool ListenerManagerImpl::addOrUpdateListenerInternal(
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);
 
+  // The listener should be updated back to its original state and the warming listener should be
+  // removed.
+  if (existing_warming_listener != warming_listeners_.end() &&
+      existing_active_listener != active_listeners_.end() &&
+      (*existing_active_listener)->blockUpdate(hash)) {
+    warming_listeners_.erase(existing_warming_listener);
+    updateWarmingActiveGauges();
+    stats_.listener_modified_.inc();
+    return true;
+  }
+
   // Do a quick blocked update check before going further. This check needs to be done against both
   // warming and active.
   if ((existing_warming_listener != warming_listeners_.end() &&
@@ -426,13 +437,23 @@ bool ListenerManagerImpl::addOrUpdateListenerInternal(
   // avoids confusion during updates and allows us to use the same bound address. Note that in
   // the case of port 0 binding, the new listener will implicitly use the same bound port from
   // the existing listener.
-  if ((existing_warming_listener != warming_listeners_.end() &&
-       *(*existing_warming_listener)->address() != *new_listener->address()) ||
-      (existing_active_listener != active_listeners_.end() &&
-       *(*existing_active_listener)->address() != *new_listener->address())) {
-    const std::string message = fmt::format(
-        "error updating listener: '{}' has a different address '{}' from existing listener", name,
-        new_listener->address()->asString());
+  bool active_listener_exists = false;
+  bool warming_listener_exists = false;
+  if (existing_warming_listener != warming_listeners_.end() &&
+      *(*existing_warming_listener)->address() != *new_listener->address()) {
+    warming_listener_exists = true;
+  }
+  if (existing_active_listener != active_listeners_.end() &&
+      *(*existing_active_listener)->address() != *new_listener->address()) {
+    active_listener_exists = true;
+  }
+  if (active_listener_exists || warming_listener_exists) {
+    const std::string message =
+        fmt::format("error updating listener: '{}' has a different address '{}' from existing "
+                    "listener address '{}'",
+                    name, new_listener->address()->asString(),
+                    warming_listener_exists ? (*existing_warming_listener)->address()->asString()
+                                            : (*existing_active_listener)->address()->asString());
     ENVOY_LOG(warn, "{}", message);
     throw EnvoyException(message);
   }
@@ -593,14 +614,14 @@ void ListenerManagerImpl::drainListener(ListenerImplPtr&& listener) {
         server_.dispatcher().post([this, draining_it]() -> void {
           // TODO(lambdai): Resolve race condition below.
           // Consider the below events in global sequence order
-          // master thread: calling drainListener
+          // main thread: calling drainListener
           // work thread: deferred delete the active connection
-          // work thread: post to master that the drain is done
-          // master thread: erase the listener
+          // work thread: post to main that the drain is done
+          // main thread: erase the listener
           // worker thread: execute destroying connection when the shared listener config is
           // destroyed at step 4 (could be worse such as access the connection because connection is
           // not yet started to deleted). The race condition is introduced because 3 occurs too
-          // early. My solution is to defer schedule the callback posting to master thread, by
+          // early. My solution is to defer schedule the callback posting to main thread, by
           // introducing DeferTaskUtil. So that 5 should always happen before 3.
           if (--draining_it->workers_pending_removal_ == 0) {
             draining_it->listener_->debugLog("draining listener removal complete");
@@ -629,11 +650,30 @@ ListenerManagerImpl::getListenerByName(ListenerList& listeners, const std::strin
   return ret;
 }
 
-std::vector<std::reference_wrapper<Network::ListenerConfig>> ListenerManagerImpl::listeners() {
+std::vector<std::reference_wrapper<Network::ListenerConfig>>
+ListenerManagerImpl::listeners(ListenerState state) {
   std::vector<std::reference_wrapper<Network::ListenerConfig>> ret;
-  ret.reserve(active_listeners_.size());
-  for (const auto& listener : active_listeners_) {
-    ret.push_back(*listener);
+
+  size_t size = 0;
+  size += state & WARMING ? warming_listeners_.size() : 0;
+  size += state & ACTIVE ? active_listeners_.size() : 0;
+  size += state & DRAINING ? draining_listeners_.size() : 0;
+  ret.reserve(size);
+
+  if (state & WARMING) {
+    for (const auto& listener : warming_listeners_) {
+      ret.push_back(*listener);
+    }
+  }
+  if (state & ACTIVE) {
+    for (const auto& listener : active_listeners_) {
+      ret.push_back(*listener);
+    }
+  }
+  if (state & DRAINING) {
+    for (const auto& draining_listener : draining_listeners_) {
+      ret.push_back(*(draining_listener.listener_));
+    }
   }
   return ret;
 }
@@ -659,19 +699,22 @@ void ListenerManagerImpl::addListenerToWorker(Worker& worker,
         // The add listener completion runs on the worker thread. Post back to the main thread to
         // avoid locking.
         server_.dispatcher().post([this, success, &listener, completion_callback]() -> void {
-          // It is theoretically possible for a listener to get added on 1 worker but not the
-          // others. The below check with onListenerCreateFailure() is there to ensure we execute
-          // the removal/logging/stats at most once on failure. Note also that drain/removal can
-          // race with addition. It's guaranteed that workers process remove after add so this
-          // should be fine.
+          // It is possible for a listener to get added on 1 worker but not the others. The below
+          // check with onListenerCreateFailure() is there to ensure we execute the
+          // removal/logging/stats at most once on failure. Note also that drain/removal can race
+          // with addition. It's guaranteed that workers process remove after add so this should be
+          // fine.
+          //
+          // TODO(mattklein123): We should consider rewriting how listener sockets are added to
+          // workers, especially in the case of reuse port. If we were to create all needed
+          // listener sockets on the main thread (even in the case of reuse port) we could catch
+          // almost all socket errors here. This would both greatly simplify the logic and allow
+          // for xDS NACK in most cases.
           if (!success && !listener.onListenerCreateFailure()) {
-            // TODO(mattklein123): In addition to a critical log and a stat, we should consider
-            // adding a startup option here to cause the server to exit. I think we probably want
-            // this at Lyft but I will do it in a follow up.
-            ENVOY_LOG(critical, "listener '{}' failed to listen on address '{}' on worker",
+            ENVOY_LOG(error, "listener '{}' failed to listen on address '{}' on worker",
                       listener.name(), listener.listenSocketFactory().localAddress()->asString());
             stats_.listener_create_failure_.inc();
-            removeListener(listener.name());
+            removeListenerInternal(listener.name(), false);
           }
           if (success) {
             stats_.listener_create_success_.inc();
@@ -795,14 +838,19 @@ uint64_t ListenerManagerImpl::numConnections() const {
 }
 
 bool ListenerManagerImpl::removeListener(const std::string& name) {
+  return removeListenerInternal(name, true);
+}
+
+bool ListenerManagerImpl::removeListenerInternal(const std::string& name,
+                                                 bool dynamic_listeners_only) {
   ENVOY_LOG(debug, "begin remove listener: name={}", name);
 
   auto existing_active_listener = getListenerByName(active_listeners_, name);
   auto existing_warming_listener = getListenerByName(warming_listeners_, name);
   if ((existing_warming_listener == warming_listeners_.end() ||
-       (*existing_warming_listener)->blockRemove()) &&
+       (dynamic_listeners_only && (*existing_warming_listener)->blockRemove())) &&
       (existing_active_listener == active_listeners_.end() ||
-       (*existing_active_listener)->blockRemove())) {
+       (dynamic_listeners_only && (*existing_active_listener)->blockRemove()))) {
     ENVOY_LOG(debug, "unknown/locked listener '{}'. no remove", name);
     return false;
   }

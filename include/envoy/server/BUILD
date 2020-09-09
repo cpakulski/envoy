@@ -75,9 +75,21 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "guarddog_config_interface",
+    hdrs = ["guarddog_config.h"],
+    deps = [
+        ":guarddog_interface",
+        "//include/envoy/api:api_interface",
+        "//include/envoy/protobuf:message_validator_interface",
+        "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
     name = "health_checker_config_interface",
     hdrs = ["health_checker_config.h"],
     deps = [
+        "//include/envoy/common:random_generator_interface",
         "//include/envoy/config:typed_config_interface",
         "//include/envoy/upstream:health_checker_interface",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
@@ -257,6 +269,7 @@ envoy_cc_library(
         "//include/envoy/thread_local:thread_local_interface",
         "//include/envoy/upstream:cluster_manager_interface",
         "//source/common/protobuf",
+        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
     ],
 )
 

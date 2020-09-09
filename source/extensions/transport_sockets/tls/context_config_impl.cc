@@ -297,10 +297,8 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
   case envoy::extensions::transport_sockets::tls::v3::TlsParameters::TLSv1_3:
     return TLS1_3_VERSION;
   default:
-    NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
+    NOT_REACHED_GCOVR_EXCL_LINE;
   }
-
-  NOT_REACHED_GCOVR_EXCL_LINE;
 }
 
 const unsigned ClientContextConfigImpl::DEFAULT_MIN_VERSION = TLS1_2_VERSION;
@@ -353,12 +351,7 @@ ClientContextConfigImpl::ClientContextConfigImpl(
 }
 
 const unsigned ServerContextConfigImpl::DEFAULT_MIN_VERSION = TLS1_VERSION;
-const unsigned ServerContextConfigImpl::DEFAULT_MAX_VERSION =
-#ifndef BORINGSSL_FIPS
-    TLS1_3_VERSION;
-#else // BoringSSL FIPS
-    TLS1_2_VERSION;
-#endif
+const unsigned ServerContextConfigImpl::DEFAULT_MAX_VERSION = TLS1_3_VERSION;
 
 const std::string ServerContextConfigImpl::DEFAULT_CIPHER_SUITES =
 #ifndef BORINGSSL_FIPS

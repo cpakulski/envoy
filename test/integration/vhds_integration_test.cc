@@ -10,7 +10,6 @@
 #include "test/common/grpc/grpc_client_integration.h"
 #include "test/integration/http_integration.h"
 #include "test/integration/utility.h"
-#include "test/mocks/server/mocks.h"
 #include "test/test_common/network_utility.h"
 #include "test/test_common/resources.h"
 #include "test/test_common/simulated_time_system.h"
@@ -24,9 +23,10 @@ using testing::AssertionResult;
 namespace Envoy {
 namespace {
 
-const char Config[] = R"EOF(
+const std::string& config() {
+  CONSTRUCT_ON_FIRST_USE(std::string, fmt::format(R"EOF(
 admin:
-  access_log_path: /dev/null
+  access_log_path: {}
   address:
     socket_address:
       address: 127.0.0.1
@@ -35,7 +35,7 @@ static_resources:
   clusters:
   - name: xds_cluster
     type: STATIC
-    http2_protocol_options: {}
+    http2_protocol_options: {{}}
     load_assignment:
       cluster_name: xds_cluster
       endpoints:
@@ -47,7 +47,7 @@ static_resources:
                 port_value: 0
   - name: my_service
     type: STATIC
-    http2_protocol_options: {}
+    http2_protocol_options: {{}}
     load_assignment:
       cluster_name: my_service
       endpoints:
@@ -81,7 +81,9 @@ static_resources:
                 grpc_services:
                   envoy_grpc:
                     cluster_name: xds_cluster
-)EOF";
+)EOF",
+                                                  Platform::null_device_path));
+}
 
 // TODO (dmitri-d) move config yaml into ConfigHelper
 const char RdsWithoutVhdsConfig[] = R"EOF(
@@ -136,7 +138,7 @@ class VhdsInitializationTest : public HttpIntegrationTest,
                                public Grpc::GrpcClientIntegrationParamTest {
 public:
   VhdsInitializationTest()
-      : HttpIntegrationTest(Http::CodecClient::Type::HTTP2, ipVersion(), realTime(), Config) {
+      : HttpIntegrationTest(Http::CodecClient::Type::HTTP2, ipVersion(), realTime(), config()) {
     use_lds_ = false;
   }
 
@@ -172,7 +174,6 @@ public:
     result = xds_connection_->waitForNewStream(*dispatcher_, xds_stream_);
     RELEASE_ASSERT(result, result.message());
     xds_stream_->startGrpcStream();
-    fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
 
     EXPECT_TRUE(compareSotwDiscoveryRequest(Config::TypeUrl::get().RouteConfiguration, "",
                                             {"my_route"}, true));
@@ -210,7 +211,7 @@ TEST_P(VhdsInitializationTest, InitializeVhdsAfterRdsHasBeenInitialized) {
       {TestUtility::parseYaml<envoy::config::route::v3::RouteConfiguration>(RdsConfigWithVhosts)},
       "2");
 
-  auto result = xds_connection_->waitForNewStream(*dispatcher_, vhds_stream_, true);
+  auto result = xds_connection_->waitForNewStream(*dispatcher_, vhds_stream_);
   RELEASE_ASSERT(result, result.message());
   vhds_stream_->startGrpcStream();
 
@@ -234,7 +235,7 @@ class VhdsIntegrationTest : public HttpIntegrationTest,
                             public Grpc::GrpcClientIntegrationParamTest {
 public:
   VhdsIntegrationTest()
-      : HttpIntegrationTest(Http::CodecClient::Type::HTTP2, ipVersion(), realTime(), Config) {
+      : HttpIntegrationTest(Http::CodecClient::Type::HTTP2, ipVersion(), realTime(), config()) {
     use_lds_ = false;
   }
 
@@ -295,14 +296,13 @@ public:
     result = xds_connection_->waitForNewStream(*dispatcher_, xds_stream_);
     RELEASE_ASSERT(result, result.message());
     xds_stream_->startGrpcStream();
-    fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
 
     EXPECT_TRUE(compareSotwDiscoveryRequest(Config::TypeUrl::get().RouteConfiguration, "",
                                             {"my_route"}, true));
     sendSotwDiscoveryResponse<envoy::config::route::v3::RouteConfiguration>(
         Config::TypeUrl::get().RouteConfiguration, {rdsConfig()}, "1");
 
-    result = xds_connection_->waitForNewStream(*dispatcher_, vhds_stream_, true);
+    result = xds_connection_->waitForNewStream(*dispatcher_, vhds_stream_);
     RELEASE_ASSERT(result, result.message());
     vhds_stream_->startGrpcStream();
 
@@ -368,7 +368,7 @@ public:
     resource->set_version("4");
     resource->mutable_resource()->PackFrom(
         API_DOWNGRADE(TestUtility::parseYaml<envoy::config::route::v3::VirtualHost>(
-            virtualHostYaml("vhost_1", "vhost_1, vhost.first"))));
+            virtualHostYaml("my_route/vhost_1", "vhost_1, vhost.first"))));
     resource->add_aliases("my_route/vhost.first");
     ret.set_nonce("test-nonce-0");
 
