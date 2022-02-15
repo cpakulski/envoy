@@ -822,7 +822,7 @@ const std::string& Utility::getProtocolString(const Protocol protocol) {
     return Headers::get().ProtocolStrings.Http3String;
   }
 
-  NOT_REACHED_GCOVR_EXCL_LINE;
+  return EMPTY_STRING;
 }
 
 absl::string_view Utility::getScheme(const RequestHeaderMap& headers) {
@@ -932,7 +932,7 @@ const std::string Utility::resetReasonToString(const Http::StreamResetReason res
     return "overload manager reset";
   }
 
-  NOT_REACHED_GCOVR_EXCL_LINE;
+  return "";
 }
 
 void Utility::transformUpgradeRequestFromH1toH2(RequestHeaderMap& headers) {
@@ -1124,6 +1124,14 @@ Utility::convertCoreToRouteRetryPolicy(const envoy::config::core::v3::RetryPolic
       route_retry_policy.retry_back_off().max_interval());
 
   return route_retry_policy;
+}
+
+bool Utility::isSafeRequest(Http::RequestHeaderMap& request_headers) {
+  absl::string_view method = request_headers.getMethodValue();
+  return method == Http::Headers::get().MethodValues.Get ||
+         method == Http::Headers::get().MethodValues.Head ||
+         method == Http::Headers::get().MethodValues.Options ||
+         method == Http::Headers::get().MethodValues.Trace;
 }
 
 } // namespace Http
