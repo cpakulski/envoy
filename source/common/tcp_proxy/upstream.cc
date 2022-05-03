@@ -8,7 +8,7 @@
 #include "source/common/http/headers.h"
 #include "source/common/http/utility.h"
 #include "source/common/runtime/runtime_features.h"
-
+extern bool g_turnOnSSL;
 namespace Envoy {
 namespace TcpProxy {
 using TunnelingConfig =
@@ -36,6 +36,10 @@ bool TcpUpstream::readDisable(bool disable) {
 }
 
 void TcpUpstream::encodeData(Buffer::Instance& data, bool end_stream) {
+  if (g_turnOnSSL) {
+    g_turnOnSSL = false;
+    upstream_conn_data_->connection().startSecureTransport();
+    }
   upstream_conn_data_->connection().write(data, end_stream);
 }
 

@@ -7,6 +7,8 @@
 
 #include "contrib/postgres_proxy/filters/network/source/postgres_decoder.h"
 
+bool g_turnOnSSL = false;
+
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
@@ -225,6 +227,22 @@ bool PostgresFilter::onSSLRequest() {
   read_callbacks_->connection().write(buf, false);
 
   return false;
+}
+
+bool PostgresFilter::startUpstreamSSL() {
+  Buffer::OwnedImpl buf;
+    uint32_t len = 8;
+  buf.writeBEInt<uint32_t>(len);
+  uint32_t ssl_code = 0x04d2162f;
+  buf.writeBEInt<uint32_t>(ssl_code);
+    read_callbacks_->injectReadDataToFilterChain(buf, false);
+    g_turnOnSSL = true;
+    return true;
+}
+
+void PostgresFilter::afterUpstreamSSL(Buffer::Instance& data) {
+    ASSERT(0 != data.length());
+    read_callbacks_->injectReadDataToFilterChain(data, false);
 }
 
 Network::FilterStatus PostgresFilter::doDecode(Buffer::Instance& data, bool frontend) {

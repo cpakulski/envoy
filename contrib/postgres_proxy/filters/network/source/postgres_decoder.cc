@@ -204,8 +204,21 @@ Decoder::Result DecoderImpl::onData(Buffer::Instance& data, bool frontend) {
    initial message will be received again after transport socket negotiates SSL. If the message
    syntax is incorrect, the decoder will move to OutOfSyncState, in which messages are not parsed.
 */
+Buffer::OwnedImpl capture;
 Decoder::Result DecoderImpl::onDataInit(Buffer::Instance& data, bool) {
   ASSERT(state_ == State::InitState);
+
+  if (started_upstream_ssl) {
+        data.drain(data.length());
+        ASSERT(0 == data.length());
+        //data.add(capture.linearize(capture.length()), capture.length());
+        // Send upstream the buffer captured before.
+        callbacks_->afterUpstreamSSL(capture); 
+        started_upstream_ssl = false;
+    state_ = State::InSyncState;
+     return Decoder::Result::Stopped;
+    }
+    capture.add(data.linearize(data.length()), data.length());
 
   // In Init state the minimum size of the message sufficient for parsing is 4 bytes.
   if (data.length() < 4) {
@@ -268,7 +281,12 @@ Decoder::Result DecoderImpl::onDataInit(Buffer::Instance& data, bool) {
     }
   } else {
     ENVOY_LOG(debug, "Detected version {}.{} of Postgres", code >> 16, code & 0x0000FFFF);
-    state_ = State::InSyncState;
+ //   state_ = State::InSyncState;
+    
+    // send SSL code upstream and wait for reply.
+    callbacks_->startUpstreamSSL();
+    started_upstream_ssl = true;
+    result = Decoder::Result::Stopped;
   }
 
   processMessageBody(data, FRONTEND, message_len_ - 4, first_, msgParser);

@@ -112,6 +112,8 @@ public:
   void incTransactionsRollback() override;
   void processQuery(const std::string&) override;
   bool onSSLRequest() override;
+  bool startUpstreamSSL() override;
+  void afterUpstreamSSL(Buffer::Instance& data) override;
 
   Network::FilterStatus doDecode(Buffer::Instance& data, bool);
   DecoderPtr createDecoder(DecoderCallbacks* callbacks);

@@ -44,6 +44,8 @@ public:
   virtual void processQuery(const std::string&) PURE;
 
   virtual bool onSSLRequest() PURE;
+  virtual bool startUpstreamSSL() PURE;
+    virtual void afterUpstreamSSL(Buffer::Instance&) PURE;
 };
 
 // Postgres message decoder.
@@ -71,6 +73,7 @@ protected:
   // Decoder attributes extracted from Startup message.
   // It can be username, database name, client app type, etc.
   Extensions::Common::SQLUtils::SQLUtils::DecoderAttributes attributes_;
+  bool started_upstream_ssl{false};
 };
 
 using DecoderPtr = std::unique_ptr<Decoder>;
