@@ -281,8 +281,9 @@ DetectorConfig::DetectorConfig(const envoy::config::cluster::v3::OutlierDetectio
 
     // Build buckets for consecutive errors:
     for (auto i = 0; i < config.consecutive_errors_size(); i++) {
-        MonitorPtr monitor = std::make_unique<Monitor>();
         const auto& ce = config.consecutive_errors(i);
+        // TODO: use default if not specified.
+        MonitorPtr monitor = std::make_unique<ConsecutiveFailuresMonitor>(PROTOBUF_GET_WRAPPED_OR_DEFAULT(ce, threshold, 3));
         printf("%s\n", ce.name().c_str()); 
         for (auto b = 0; b < ce.error_buckets_size(); b++) {
             const auto& be = ce.error_buckets(b);
@@ -324,7 +325,7 @@ void Monitor::addErrorBucket(ErrorsBucketPtr&& bucket) {
     buckets_[bucket->type()].push_back(std::move(bucket));
 }    
 
-bool Monitor::reportResult(const Error& error) {
+bool ConsecutiveFailuresMonitor::reportResult(const Error& error) {
 // Get type of the error and check if it contains buckets interested in that type.
     if (buckets_.find(error.type()) == buckets_.end()) {
         return false;

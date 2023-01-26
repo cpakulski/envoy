@@ -203,20 +203,33 @@ public:
   // Class groups error buckets. Buckets may be of different types.
   class Monitor {
     public:
+        virtual ~Monitor() {}
         void addErrorBucket(ErrorsBucketPtr&& bucket);// {buckets_.push_back(std::move(bucket));}
         //bool eject(uint64_t code);
-        bool reportResult(const Error&);
+        virtual bool reportResult(const Error&) PURE;
     //private:
-        uint64_t threshold_{3};
-        std::atomic<uint64_t> counter_{0};
         //std::vector<ErrorsBucketPtr> buckets_;
         absl::flat_hash_map<ErrorType, std::vector<ErrorsBucketPtr>> buckets_;
 
         bool tripped() const {return tripped_;}
-        void reset() {counter_ = 0;} 
-    private:
+        virtual void reset() PURE;
+    protected:
         bool tripped_{false};
   };
+
+  class ConsecutiveFailuresMonitor : public Monitor {
+  public:
+        ConsecutiveFailuresMonitor() = delete;
+        ConsecutiveFailuresMonitor(uint64_t threshold) : threshold_(threshold) {}
+        bool reportResult(const Error&) override;
+        void reset() override {counter_ = 0;} 
+
+  private:
+        // Consecutive failures monitor simply increments a counter and compares to threashold.
+        std::atomic<uint64_t> counter_{0};
+        uint64_t threshold_;
+    };
+
 
   using MonitorPtr = std::unique_ptr<Monitor>;
 
