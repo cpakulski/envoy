@@ -92,6 +92,23 @@ void DetectorHostMonitorImpl::putHttpResponseCode(uint64_t response_code) {
     consecutive_5xx_ = 0;
     consecutive_gateway_failure_ = 0;
   }
+
+  // Check all other monitors
+    std::shared_ptr<DetectorImpl> detector = detector_.lock();
+    if (!detector) {
+      // It's possible for the cluster/detector to go away while we still have a host in use.
+      return;
+    }
+  
+  // Returned shared object is safe to operate on. If the other thread decrements the ownership count by for example
+  // during the configuration update the shared pointer stays safe to operate on.
+  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
+  if (monitor->reportResult(HttpCode(response_code))) {
+    // Do something similar to onConsecutive5xx.
+    detector->notifyMainThreadError(host_.lock());
+    //ASSERT(false);
+  }
+    }
 }
 
 absl::optional<Http::Code> DetectorHostMonitorImpl::resultToHttpCode(Result result) {
@@ -257,7 +274,86 @@ DetectorConfig::DetectorConfig(const envoy::config::cluster::v3::OutlierDetectio
           config, max_ejection_time,
           std::max(DEFAULT_MAX_EJECTION_TIME_MS, base_ejection_time_ms_)))),
       max_ejection_time_jitter_ms_(static_cast<uint64_t>(PROTOBUF_GET_MS_OR_DEFAULT(
-          config, max_ejection_time_jitter, DEFAULT_MAX_EJECTION_TIME_JITTER_MS))) {}
+          config, max_ejection_time_jitter, DEFAULT_MAX_EJECTION_TIME_JITTER_MS))) {
+
+    //std::shared_ptr<MonitorsSet> monitors_set;
+    monitors_set_ = std::make_shared<MonitorsSet>();
+
+    // Build buckets for consecutive errors:
+    for (auto i = 0; i < config.consecutive_errors_size(); i++) {
+        MonitorPtr monitor = std::make_unique<Monitor>();
+        const auto& ce = config.consecutive_errors(i);
+        printf("%s\n", ce.name().c_str()); 
+        for (auto b = 0; b < ce.error_buckets_size(); b++) {
+            const auto& be = ce.error_buckets(b);
+            ASSERT(be.has_http_errors());
+            const auto& httpe = be.http_errors();
+            printf("%d ->> %d\n", httpe.range().start(), httpe.range().end());
+            HTTPErrorCodesBucketPtr bucket = std::make_unique<HTTPErrorCodesBucket>("test", httpe.range().start(), httpe.range().end());
+            monitor->addErrorBucket(std::move(bucket));
+        }
+        monitors_set_->addMonitor(std::move(monitor));
+    }
+
+    // Finally set shared ptr in 
+}
+
+#if 0
+bool Monitor::eject(uint64_t code) {
+  for(auto& bucket : buckets_) {
+    if (bucket->contains(code)) {
+        // increase number of errors and compare to threshold.
+        counter_++;
+        tripped_ = (counter_ >= threshold_);
+        return tripped_;
+    }
+  } 
+
+  // none of the buckets caught the error.
+  counter_ = 0;
+
+  return false;
+}
+#endif
+
+
+void Monitor::addErrorBucket(ErrorsBucketPtr&& bucket) {
+    if (buckets_.find(bucket->type()) == buckets_.end()) {
+         buckets_[bucket->type()] = std::vector<ErrorsBucketPtr>();
+    }
+    buckets_[bucket->type()].push_back(std::move(bucket));
+}    
+
+bool Monitor::reportResult(const Error& error) {
+// Get type of the error and check if it contains buckets interested in that type.
+    if (buckets_.find(error.type()) == buckets_.end()) {
+        return false;
+    }
+
+  for(const auto& bucket : buckets_[error.type()]) {
+    if (bucket->matches(error)) {
+        // increase number of errors and compare to threshold.
+        counter_++;
+        tripped_ = (counter_ >= threshold_);
+        return tripped_;
+    }
+  } 
+
+  // none of the buckets caught the error.
+  counter_ = 0;
+
+  return false;
+}
+
+bool HTTPErrorCodesBucket::matches(const Error& error) const {
+    // We should not get here with errors other then HTTP codes.
+    ASSERT(error.type() == ErrorType::HTTP_CODE);
+    const HttpCode& http_code = *static_cast<const HttpCode*>(&error); 
+        return ((http_code.code() >= start_) && (http_code.code() < end_));
+    
+}
+
+
 
 DetectorImpl::DetectorImpl(const Cluster& cluster,
                            const envoy::config::cluster::v3::OutlierDetection& config,
@@ -351,7 +447,7 @@ void DetectorImpl::checkHostForUneject(HostSharedPtr host, DetectorHostMonitorIm
       runtime_.snapshot().getInteger(BaseEjectionTimeMsRuntime, config_.baseEjectionTimeMs()));
   const std::chrono::milliseconds max_eject_time = std::chrono::milliseconds(
       runtime_.snapshot().getInteger(MaxEjectionTimeMsRuntime, config_.maxEjectionTimeMs()));
-  const std::chrono::milliseconds jitter = monitor->getJitter();
+  const std::chrono::milliseconds jitter = std::chrono::milliseconds(0); //monitor->getJitter();
   ASSERT(monitor->numEjections() > 0);
   if ((min(base_eject_time * monitor->ejectTimeBackoff(), max_eject_time) + jitter) <=
       (now - monitor->lastEjectionTime().value())) {
@@ -362,6 +458,16 @@ void DetectorImpl::checkHostForUneject(HostSharedPtr host, DetectorHostMonitorIm
     host_monitors_[host]->resetConsecutive5xx();
     host_monitors_[host]->resetConsecutiveGatewayFailure();
     host_monitors_[host]->resetConsecutiveLocalOriginFailure();
+
+    for (auto& monitor : config_.monitorsSet()->monitors()) {
+        monitor->reset();
+    }
+    printf(">>>>> UNEJECTING %d base: %ld max: %ld diff: %ld\n", monitor->ejectTimeBackoff(), std::chrono::milliseconds(base_eject_time).count(),   
+        std::chrono::milliseconds(max_eject_time).count(), 
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
+    printf(">>>>> UNEJECTING based on: %ld <= %ld\n", 
+  std::chrono::duration_cast<std::chrono::milliseconds>(min(base_eject_time * monitor->ejectTimeBackoff(), max_eject_time) + jitter).count(),
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
     monitor->uneject(now);
     runCallbacks(host);
 
@@ -455,6 +561,33 @@ void DetectorImpl::updateDetectedEjectionStats(envoy::data::cluster::v3::Outlier
   }
 }
 
+void DetectorImpl::ejectHost(HostSharedPtr host) {
+    // Find the monitor which triggered ejection.
+
+    for (const auto& monitor : config_.monitorsSet()->monitors()) {
+        if (monitor->tripped()) {
+            // TODO: check for maximum number of hosts which can be ejected.
+      ejections_active_helper_.inc();
+            host_monitors_[host]->eject(time_source_.monotonicTime());
+    printf(">>>>> EJECTING %d\n", host_monitors_[host]->ejectTimeBackoff());
+            runCallbacks(host);
+      const std::chrono::milliseconds base_eject_time = std::chrono::milliseconds(
+          runtime_.snapshot().getInteger(BaseEjectionTimeMsRuntime, config_.baseEjectionTimeMs()));
+      const std::chrono::milliseconds max_eject_time = std::chrono::milliseconds(
+          runtime_.snapshot().getInteger(MaxEjectionTimeMsRuntime, config_.maxEjectionTimeMs()));
+
+      if ((host_monitors_[host]->ejectTimeBackoff() * base_eject_time) <
+          (max_eject_time + base_eject_time)) {
+        host_monitors_[host]->ejectTimeBackoff()++;
+      }
+
+            return; 
+        }
+    }
+    
+    ASSERT(false);
+}
+
 void DetectorImpl::ejectHost(HostSharedPtr host,
                              envoy::data::cluster::v3::OutlierEjectionType type) {
   uint64_t max_ejection_percent = std::min<uint64_t>(
@@ -536,6 +669,16 @@ void DetectorImpl::notifyMainThreadConsecutiveError(
   });
 }
 
+void DetectorImpl::notifyMainThreadError(HostSharedPtr host) {
+  std::weak_ptr<DetectorImpl> weak_this = shared_from_this();
+  dispatcher_.post([weak_this, host]() -> void {
+    std::shared_ptr<DetectorImpl> shared_this = weak_this.lock();
+    if (shared_this) {
+      shared_this->onConsecutiveErrorWorker(host);
+    }
+  });
+}
+
 void DetectorImpl::onConsecutive5xx(HostSharedPtr host) {
   notifyMainThreadConsecutiveError(host, envoy::data::cluster::v3::CONSECUTIVE_5XX);
 }
@@ -588,6 +731,19 @@ void DetectorImpl::onConsecutiveErrorWorker(HostSharedPtr host,
     host_monitors_[host]->resetConsecutiveLocalOriginFailure();
     break;
   }
+}
+
+void DetectorImpl::onConsecutiveErrorWorker(HostSharedPtr host) {
+  // Ejections come in cross thread. There is a chance that the host has already been removed from
+  // the set. If so, just ignore it.
+  if (host_monitors_.count(host) == 0) {
+    return;
+  }
+  if (host->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK)) {
+    return;
+  }
+
+  ejectHost(host);
 }
 
 DetectorImpl::EjectionPair DetectorImpl::successRateEjectionThreshold(

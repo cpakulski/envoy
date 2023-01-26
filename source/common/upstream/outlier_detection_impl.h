@@ -133,6 +133,109 @@ private:
 
 class DetectorImpl;
 
+enum class ErrorType {
+        // types of possible errors
+        HTTP_CODE,
+        LOCAL_ORIGIN
+        };
+
+// Base class for category of errors which may be reported to a monitor.
+// Errors will be caught by buckets matching the type of error.
+#if 0
+template<ErrorType T>
+class ErrorValue {
+    static enum {
+        // types of possible errors
+        HTTP_CODE,
+        LOCAL_ORIGIN
+        } Type;
+   ErrorType type() const {return T;}
+};
+#endif
+
+class Error {
+public:
+    virtual ErrorType type() const PURE; 
+    virtual ~Error() = default;// {}
+};
+
+// Http code error
+class HttpCode : public Error {//, public ErrorValue<ErrorType::HTTP_CODE> {
+    public:
+        HttpCode(uint64_t code) : code_(code) {}
+        HttpCode() = delete;
+        ErrorType type() const override {return ErrorType::HTTP_CODE;}
+        virtual ~HttpCode() {}
+        uint64_t code() const {return code_;}
+ private:
+    uint64_t code_;
+};
+
+
+class ErrorsBucket {
+public:
+    virtual bool matches(const Error&) const PURE;
+    virtual ErrorType type() const PURE;
+    virtual ~ErrorsBucket() {}
+};
+
+   using ErrorsBucketPtr = std::unique_ptr<ErrorsBucket>;
+
+  // class defines consecutive range of HTTP codes.
+  class HTTPErrorCodesBucket : public ErrorsBucket {
+       public:
+        ErrorType type() const override {return ErrorType::HTTP_CODE;}
+        HTTPErrorCodesBucket() = delete;
+        HTTPErrorCodesBucket(const std::string& name, uint64_t start, uint64_t end) : name_(name), start_(start), end_(end) {}
+
+        const std::string& name() {return name_;}
+        bool contains(uint64_t code) {return ((code >= start_) && (code < end_));}
+        bool matches(const Error&) const override;
+
+        virtual ~HTTPErrorCodesBucket() {}
+    private:
+        std::string name_; 
+        uint64_t start_, end_;
+    };
+
+   using HTTPErrorCodesBucketPtr = std::unique_ptr<HTTPErrorCodesBucket>;
+
+  // Class groups error buckets. Buckets may be of different types.
+  class Monitor {
+    public:
+        void addErrorBucket(ErrorsBucketPtr&& bucket);// {buckets_.push_back(std::move(bucket));}
+        //bool eject(uint64_t code);
+        bool reportResult(const Error&);
+    //private:
+        uint64_t threshold_{3};
+        std::atomic<uint64_t> counter_{0};
+        //std::vector<ErrorsBucketPtr> buckets_;
+        absl::flat_hash_map<ErrorType, std::vector<ErrorsBucketPtr>> buckets_;
+
+        bool tripped() const {return tripped_;}
+        void reset() {counter_ = 0;} 
+    private:
+        bool tripped_{false};
+  };
+
+  using MonitorPtr = std::unique_ptr<Monitor>;
+
+    class ErrorBuckets {
+    public:
+        void addErrorBucket(HTTPErrorCodesBucketPtr&& bucket) {buckets_.push_back(std::move(bucket));}
+        bool eject(uint64_t code);
+    //private:
+        uint64_t threshold_{3};
+        std::atomic<uint64_t> counter_{0};
+        // TODO: can different types can be stored here or bucket per type is required.
+        std::vector<HTTPErrorCodesBucketPtr> buckets_;
+
+        bool tripped() const {return tripped_;}
+        void reset() {counter_ = 0;} 
+    private:
+        bool tripped_{false};
+    };
+
 /**
  * Implementation of DetectorHostMonitor for the generic detector.
  */
@@ -210,6 +313,8 @@ private:
   // jitter for outlier ejection time
   std::chrono::milliseconds jitter_;
 
+  std::shared_ptr<ErrorBuckets> buckets_;
+
   // success rate monitors:
   // - external_origin: for all events when external/local are not split
   //   and for external origin failures when external/local events are split
@@ -222,6 +327,8 @@ private:
   void putResultWithLocalExternalSplit(Result result, absl::optional<uint64_t> code);
   std::function<void(DetectorHostMonitorImpl*, Result, absl::optional<uint64_t> code)>
       put_result_func_;
+
+  //std::shared_ptr<Monitor>
 };
 
 /**
@@ -298,8 +405,18 @@ constexpr absl::string_view MaxEjectionTimeJitterMsRuntime =
 /**
  * Configuration for the outlier detection.
  */
+class MonitorsSet {
+    public:
+        void addMonitor(MonitorPtr&& monitor) {monitors_.push_back(std::move(monitor));}
+        const std::vector<MonitorPtr>& monitors() {return monitors_;}
+
+    private:
+  std::vector<MonitorPtr> monitors_;
+};
+
 class DetectorConfig {
 public:
+
   DetectorConfig(const envoy::config::cluster::v3::OutlierDetection& config);
 
   uint64_t intervalMs() const { return interval_ms_; }
@@ -331,7 +448,7 @@ public:
   uint64_t maxEjectionTimeMs() const { return max_ejection_time_ms_; }
   uint64_t maxEjectionTimeJitterMs() const { return max_ejection_time_jitter_ms_; }
 
-private:
+//private:
   const uint64_t interval_ms_;
   const uint64_t base_ejection_time_ms_;
   const uint64_t consecutive_5xx_;
@@ -376,7 +493,14 @@ private:
   static constexpr uint64_t DEFAULT_ENFORCING_LOCAL_ORIGIN_SUCCESS_RATE = 100;
   static constexpr uint64_t DEFAULT_MAX_EJECTION_TIME_MS = 10 * DEFAULT_BASE_EJECTION_TIME_MS;
   static constexpr uint64_t DEFAULT_MAX_EJECTION_TIME_JITTER_MS = 0;
+  // explicitly call constructor to increment ownership count of the shared pointer.
+  std::shared_ptr<MonitorsSet> monitorsSet() {return std::shared_ptr<MonitorsSet>(monitors_set_);}
+
+private:
+//  std::vector<MonitorPtr> monitors_;
+  std::shared_ptr<MonitorsSet> monitors_set_;
 };
+
 
 /**
  * An implementation of an outlier detector. In the future we may support multiple outlier detection
@@ -394,6 +518,7 @@ public:
   void onConsecutive5xx(HostSharedPtr host);
   void onConsecutiveGatewayFailure(HostSharedPtr host);
   void onConsecutiveLocalOriginFailure(HostSharedPtr host);
+  void notifyMainThreadError(HostSharedPtr host);
   Runtime::Loader& runtime() { return runtime_; }
   DetectorConfig& config() { return config_; }
 
@@ -439,8 +564,10 @@ private:
   void armIntervalTimer();
   void checkHostForUneject(HostSharedPtr host, DetectorHostMonitorImpl* monitor, MonotonicTime now);
   void ejectHost(HostSharedPtr host, envoy::data::cluster::v3::OutlierEjectionType type);
+  void ejectHost(HostSharedPtr host);
   static DetectionStats generateStats(Stats::Scope& scope);
   void initialize(const Cluster& cluster);
+  void onConsecutiveErrorWorker(HostSharedPtr host);
   void onConsecutiveErrorWorker(HostSharedPtr host,
                                 envoy::data::cluster::v3::OutlierEjectionType type);
   void notifyMainThreadConsecutiveError(HostSharedPtr host,

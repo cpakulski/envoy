@@ -9,6 +9,8 @@ import "udpa/annotations/status.proto";
 import "udpa/annotations/versioning.proto";
 import "validate/validate.proto";
 
+import "envoy/type/v3/range.proto";
+
 option java_package = "io.envoyproxy.envoy.config.cluster.v3";
 option java_outer_classname = "OutlierDetectionProto";
 option java_multiple_files = true;
@@ -16,6 +18,16 @@ option go_package = "github.com/envoyproxy/go-control-plane/envoy/config/cluster
 option (udpa.annotations.file_status).package_version_status = ACTIVE;
 
 // [#protodoc-title: Outlier detection]
+  message HttpErrorsBucket {
+    string  name = 1;
+    type.v3.Int32Range range = 2;
+  }
+ 
+  message ErrorBucket {
+  oneof bucket {
+     HttpErrorsBucket http_errors = 1;
+    }
+  }
 
 // See the :ref:`architecture overview <arch_overview_outlier_detection>` for
 // more information on outlier detection.
@@ -161,4 +173,13 @@ message OutlierDetection {
   // See :ref:`max_ejection_time_jitter<envoy_v3_api_field_config.cluster.v3.OutlierDetection.base_ejection_time>`
   // Defaults to 0s.
   google.protobuf.Duration max_ejection_time_jitter = 22;
+
+  message ConsecutiveErrors {
+    string name = 1;
+    google.protobuf.UInt32Value threshold = 2 [(validate.rules).uint32 = {lte: 100}];
+    google.protobuf.UInt32Value enforcing = 3 [(validate.rules).uint32 = {lte: 100}];
+    repeated ErrorBucket error_buckets  = 4;
+  }
+
+  repeated ConsecutiveErrors consecutive_errors = 23;
 }
