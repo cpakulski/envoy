@@ -22,10 +22,14 @@ option (udpa.annotations.file_status).package_version_status = ACTIVE;
     string  name = 1;
     type.v3.Int32Range range = 2;
   }
+
+  message LocalOriginEvents {
+  }
  
   message ErrorBucket {
   oneof bucket {
      HttpErrorsBucket http_errors = 1;
+     LocalOriginEvents local_origin_events = 2;
     }
   }
 

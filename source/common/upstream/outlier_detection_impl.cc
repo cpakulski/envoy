@@ -194,6 +194,25 @@ void DetectorHostMonitorImpl::putResultWithLocalExternalSplit(Result result,
 // config parameter.
 void DetectorHostMonitorImpl::putResult(Result result, absl::optional<uint64_t> code) {
   put_result_func_(this, result, code);
+    
+  // Call extensions
+  // Check all other monitors
+    std::shared_ptr<DetectorImpl> detector = detector_.lock();
+    if (!detector) {
+      // It's possible for the cluster/detector to go away while we still have a host in use.
+      return;
+    }
+  
+  // Returned shared object is safe to operate on. If the other thread decrements the ownership count by for example
+  // during the configuration update the shared pointer stays safe to operate on.
+  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
+  if (monitor->reportResult(LocalOriginEvent(result))) {
+    // Do something similar to onConsecutive5xx.
+    detector->notifyMainThreadError(host_.lock());
+    //ASSERT(false);
+  }
+    }
+    
 }
 
 void DetectorHostMonitorImpl::localOriginFailure() {
@@ -287,12 +306,18 @@ DetectorConfig::DetectorConfig(const envoy::config::cluster::v3::OutlierDetectio
         printf("%s\n", ce.name().c_str()); 
         for (auto b = 0; b < ce.error_buckets_size(); b++) {
             const auto& be = ce.error_buckets(b);
-            ASSERT(be.has_http_errors());
+            if (be.has_http_errors()) {
             const auto& httpe = be.http_errors();
             printf("%d ->> %d\n", httpe.range().start(), httpe.range().end());
             HTTPErrorCodesBucketPtr bucket = std::make_unique<HTTPErrorCodesBucket>("test", httpe.range().start(), httpe.range().end());
             monitor->addErrorBucket(std::move(bucket));
-        }
+            continue;
+            }
+            if (be.has_local_origin_events()) {
+                monitor->addErrorBucket(std::make_unique<LocalOriginEventsBucket>());
+                continue;
+            }
+    }
         monitors_set_->addMonitor(std::move(monitor));
     }
 
@@ -354,6 +379,13 @@ bool HTTPErrorCodesBucket::matches(const Error& error) const {
     
 }
 
+bool LocalOriginEventsBucket::matches (const Error& error) const {
+    ASSERT(error.type() == ErrorType::LOCAL_ORIGIN);
+    const LocalOriginEvent& event = *static_cast<const LocalOriginEvent*>(&error); 
+
+    // Capture all events except the success
+    return (!(event.result() == Result::LocalOriginConnectSuccessFinal)/* || (event.result() == Result::LocalOriginConnectSuccessFinal)*/);
+} 
 
 
 DetectorImpl::DetectorImpl(const Cluster& cluster,

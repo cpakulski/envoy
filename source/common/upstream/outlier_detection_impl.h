@@ -171,6 +171,19 @@ class HttpCode : public Error {//, public ErrorValue<ErrorType::HTTP_CODE> {
     uint64_t code_;
 };
 
+//TODO: Can type be moved to Error<Type>?
+// Or force Error contructor to take the type and implement type() method to return that type.
+class LocalOriginEvent : public Error {
+public:
+      LocalOriginEvent(Result result) : result_(result){}
+      LocalOriginEvent() = delete;
+        ErrorType type() const override {return ErrorType::LOCAL_ORIGIN;}
+
+      Result result() const {return result_;}
+private:
+    Result result_;
+};
+
 
 class ErrorsBucket {
 public:
@@ -199,6 +212,15 @@ public:
     };
 
    using HTTPErrorCodesBucketPtr = std::unique_ptr<HTTPErrorCodesBucket>;
+
+// Class defines Local Origin Events
+  class LocalOriginEventsBucket : public ErrorsBucket {
+    public:
+        ErrorType type() const override {return ErrorType::LOCAL_ORIGIN;}
+        LocalOriginEventsBucket() = default;
+        bool matches (const Error&) const override;
+};
+    using LocalOriginEventsBucketPtr = std::unique_ptr<LocalOriginEventsBucket>;
 
   // Class groups error buckets. Buckets may be of different types.
   class Monitor {
@@ -232,22 +254,6 @@ public:
 
 
   using MonitorPtr = std::unique_ptr<Monitor>;
-
-    class ErrorBuckets {
-    public:
-        void addErrorBucket(HTTPErrorCodesBucketPtr&& bucket) {buckets_.push_back(std::move(bucket));}
-        bool eject(uint64_t code);
-    //private:
-        uint64_t threshold_{3};
-        std::atomic<uint64_t> counter_{0};
-        // TODO: can different types can be stored here or bucket per type is required.
-        std::vector<HTTPErrorCodesBucketPtr> buckets_;
-
-        bool tripped() const {return tripped_;}
-        void reset() {counter_ = 0;} 
-    private:
-        bool tripped_{false};
-    };
 
 /**
  * Implementation of DetectorHostMonitor for the generic detector.
@@ -326,7 +332,7 @@ private:
   // jitter for outlier ejection time
   std::chrono::milliseconds jitter_;
 
-  std::shared_ptr<ErrorBuckets> buckets_;
+  //std::shared_ptr<ErrorBuckets> buckets_;
 
   // success rate monitors:
   // - external_origin: for all events when external/local are not split
