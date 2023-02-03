@@ -46,7 +46,7 @@ enum class Result {
   ExtOriginRequestFailed, // The server indicated it cannot process a request
   ExtOriginRequestSuccess // Request was completed successfully.
 };
-
+ class Error;
 /**
  * Monitor for per host data. Proxy filters should send pertinent data when available.
  */
@@ -73,6 +73,8 @@ public:
    * and such code may be passed as optional parameter.
    */
   virtual void putResult(Result result, absl::optional<uint64_t> code) PURE;
+
+  virtual void putResult(const Error&) PURE;
 
   /**
    * Wrapper around putResult with 2 params when mapping to HTTP code is not

@@ -37,6 +37,7 @@ public:
   uint32_t numEjections() override { return 0; }
   void putHttpResponseCode(uint64_t) override {}
   void putResult(Result, absl::optional<uint64_t>) override {}
+  void putResult(const Error&) override {}
   void putResponseTime(std::chrono::milliseconds) override {}
   const absl::optional<MonotonicTime>& lastEjectionTime() override { return time_; }
   const absl::optional<MonotonicTime>& lastUnejectionTime() override { return time_; }
@@ -136,7 +137,8 @@ class DetectorImpl;
 enum class ErrorType {
         // types of possible errors
         HTTP_CODE,
-        LOCAL_ORIGIN
+        LOCAL_ORIGIN,
+        DATABASE,
         };
 
 // Base class for category of errors which may be reported to a monitor.
@@ -184,6 +186,17 @@ private:
     Result result_;
 };
 
+class DBTransaction : public Error {
+public:
+    DBTransaction() = delete;
+    DBTransaction(bool result) : result_(result) {}
+    ErrorType type() const override {return ErrorType::DATABASE;}
+
+    bool result() const {return result_;}
+private:
+    bool result_;
+};
+
 
 class ErrorsBucket {
 public:
@@ -221,6 +234,13 @@ public:
         bool matches (const Error&) const override;
 };
     using LocalOriginEventsBucketPtr = std::unique_ptr<LocalOriginEventsBucket>;
+
+  class DatabaseTransactionsBucket : public ErrorsBucket {
+    public:
+        ErrorType type() const override {return ErrorType::DATABASE;}
+        DatabaseTransactionsBucket() = default;
+        bool matches (const Error&) const override;
+};
 
   // Class groups error buckets. Buckets may be of different types.
   class Monitor {
@@ -276,6 +296,7 @@ public:
   uint32_t numEjections() override { return num_ejections_; }
   void putHttpResponseCode(uint64_t response_code) override;
   void putResult(Result result, absl::optional<uint64_t> code) override;
+  void putResult(const Error&) override;
   void putResponseTime(std::chrono::milliseconds) override {}
   const absl::optional<MonotonicTime>& lastEjectionTime() override { return last_ejection_time_; }
   const absl::optional<MonotonicTime>& lastUnejectionTime() override {

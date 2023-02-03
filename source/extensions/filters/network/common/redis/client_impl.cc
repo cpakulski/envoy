@@ -215,6 +215,14 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   }
   request.aggregate_request_timer_->complete();
 
+  if (!config_.disableOutlierEvents()) {
+  if (value->type() == Common::Redis::RespType::Error) {
+    host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(false));
+  } else {
+    host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(true));
+    }
+  }
+
   ClientCallbacks& callbacks = request.callbacks_;
 
   // We need to ensure the request is popped before calling the callback, since the callback might

@@ -18,18 +18,26 @@ option go_package = "github.com/envoyproxy/go-control-plane/envoy/config/cluster
 option (udpa.annotations.file_status).package_version_status = ACTIVE;
 
 // [#protodoc-title: Outlier detection]
+  // Error bucket for HTTP codes
   message HttpErrorsBucket {
     string  name = 1;
     type.v3.Int32Range range = 2;
   }
-
+  
+  // Error bucket for locally originated errors
   message LocalOriginEvents {
+  }
+
+  // Error bucket for database errors.
+  // Subparameters amy be added later, like malformed response, error on write, etc.
+  message DatabaseTransactions {
   }
  
   message ErrorBucket {
   oneof bucket {
      HttpErrorsBucket http_errors = 1;
      LocalOriginEvents local_origin_events = 2;
+     DatabaseTransactions database_transactions = 3;
     }
   }
 

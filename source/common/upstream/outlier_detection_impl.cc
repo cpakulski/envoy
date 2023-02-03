@@ -209,7 +209,22 @@ void DetectorHostMonitorImpl::putResult(Result result, absl::optional<uint64_t> 
   if (monitor->reportResult(LocalOriginEvent(result))) {
     // Do something similar to onConsecutive5xx.
     detector->notifyMainThreadError(host_.lock());
-    //ASSERT(false);
+  }
+    }
+    
+}
+
+void DetectorHostMonitorImpl::putResult(const Error& error) {
+    std::shared_ptr<DetectorImpl> detector = detector_.lock();
+    if (!detector) {
+      // It's possible for the cluster/detector to go away while we still have a host in use.
+      return;
+    }
+  
+  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
+  if (monitor->reportResult(error)) {
+    // Do something similar to onConsecutive5xx.
+    detector->notifyMainThreadError(host_.lock());
   }
     }
     
@@ -303,18 +318,20 @@ DetectorConfig::DetectorConfig(const envoy::config::cluster::v3::OutlierDetectio
         const auto& ce = config.consecutive_errors(i);
         // TODO: use default if not specified.
         MonitorPtr monitor = std::make_unique<ConsecutiveFailuresMonitor>(PROTOBUF_GET_WRAPPED_OR_DEFAULT(ce, threshold, 3));
-        printf("%s\n", ce.name().c_str()); 
         for (auto b = 0; b < ce.error_buckets_size(); b++) {
             const auto& be = ce.error_buckets(b);
             if (be.has_http_errors()) {
             const auto& httpe = be.http_errors();
-            printf("%d ->> %d\n", httpe.range().start(), httpe.range().end());
             HTTPErrorCodesBucketPtr bucket = std::make_unique<HTTPErrorCodesBucket>("test", httpe.range().start(), httpe.range().end());
             monitor->addErrorBucket(std::move(bucket));
             continue;
             }
             if (be.has_local_origin_events()) {
                 monitor->addErrorBucket(std::make_unique<LocalOriginEventsBucket>());
+                continue;
+            }
+            if (be.has_database_transactions()) {
+                monitor->addErrorBucket(std::make_unique<DatabaseTransactionsBucket>());
                 continue;
             }
     }
@@ -384,8 +401,15 @@ bool LocalOriginEventsBucket::matches (const Error& error) const {
     const LocalOriginEvent& event = *static_cast<const LocalOriginEvent*>(&error); 
 
     // Capture all events except the success
-    return (!(event.result() == Result::LocalOriginConnectSuccessFinal)/* || (event.result() == Result::LocalOriginConnectSuccessFinal)*/);
+    return (!((event.result() == Result::LocalOriginConnectSuccessFinal) || (event.result() == Result::ExtOriginRequestSuccess)));
 } 
+
+bool DatabaseTransactionsBucket::matches(const Error& error) const {
+    ASSERT(error.type() == ErrorType::DATABASE);
+    const DBTransaction& db = *static_cast<const DBTransaction*>(&error); 
+
+    return !db.result();
+}
 
 
 DetectorImpl::DetectorImpl(const Cluster& cluster,
@@ -495,10 +519,8 @@ void DetectorImpl::checkHostForUneject(HostSharedPtr host, DetectorHostMonitorIm
     for (auto& monitor : config_.monitorsSet()->monitors()) {
         monitor->reset();
     }
-    printf(">>>>> UNEJECTING %d base: %ld max: %ld diff: %ld\n", monitor->ejectTimeBackoff(), std::chrono::milliseconds(base_eject_time).count(),   
         std::chrono::milliseconds(max_eject_time).count(), 
         std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
-    printf(">>>>> UNEJECTING based on: %ld <= %ld\n", 
   std::chrono::duration_cast<std::chrono::milliseconds>(min(base_eject_time * monitor->ejectTimeBackoff(), max_eject_time) + jitter).count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
     monitor->uneject(now);
@@ -602,7 +624,6 @@ void DetectorImpl::ejectHost(HostSharedPtr host) {
             // TODO: check for maximum number of hosts which can be ejected.
       ejections_active_helper_.inc();
             host_monitors_[host]->eject(time_source_.monotonicTime());
-    printf(">>>>> EJECTING %d\n", host_monitors_[host]->ejectTimeBackoff());
             runCallbacks(host);
       const std::chrono::milliseconds base_eject_time = std::chrono::milliseconds(
           runtime_.snapshot().getInteger(BaseEjectionTimeMsRuntime, config_.baseEjectionTimeMs()));
@@ -617,8 +638,6 @@ void DetectorImpl::ejectHost(HostSharedPtr host) {
             return; 
         }
     }
-    
-    ASSERT(false);
 }
 
 void DetectorImpl::ejectHost(HostSharedPtr host,
