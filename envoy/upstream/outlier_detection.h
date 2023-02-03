@@ -46,7 +46,7 @@ enum class Result {
   ExtOriginRequestFailed, // The server indicated it cannot process a request
   ExtOriginRequestSuccess // Request was completed successfully.
 };
- class Error;
+class Error;
 /**
  * Monitor for per host data. Proxy filters should send pertinent data when available.
  */

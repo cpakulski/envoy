@@ -94,21 +94,20 @@ void DetectorHostMonitorImpl::putHttpResponseCode(uint64_t response_code) {
   }
 
   // Check all other monitors
-    std::shared_ptr<DetectorImpl> detector = detector_.lock();
-    if (!detector) {
-      // It's possible for the cluster/detector to go away while we still have a host in use.
-      return;
-    }
-  
-  // Returned shared object is safe to operate on. If the other thread decrements the ownership count by for example
-  // during the configuration update the shared pointer stays safe to operate on.
-  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
-  if (monitor->reportResult(HttpCode(response_code))) {
-    // Do something similar to onConsecutive5xx.
-    detector->notifyMainThreadError(host_.lock());
-    //ASSERT(false);
+  std::shared_ptr<DetectorImpl> detector = detector_.lock();
+  if (!detector) {
+    // It's possible for the cluster/detector to go away while we still have a host in use.
+    return;
   }
+
+  // Returned shared object is safe to operate on. If some other thread decrements the ownership
+  // count during the configuration update the shared pointer stays safe to operate on.
+  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
+    if (monitor->reportResult(HttpCode(response_code))) {
+      // Do something similar to onConsecutive5xx.
+      detector->notifyMainThreadError(host_.lock());
     }
+  }
 }
 
 absl::optional<Http::Code> DetectorHostMonitorImpl::resultToHttpCode(Result result) {
@@ -194,40 +193,38 @@ void DetectorHostMonitorImpl::putResultWithLocalExternalSplit(Result result,
 // config parameter.
 void DetectorHostMonitorImpl::putResult(Result result, absl::optional<uint64_t> code) {
   put_result_func_(this, result, code);
-    
+
   // Call extensions
   // Check all other monitors
-    std::shared_ptr<DetectorImpl> detector = detector_.lock();
-    if (!detector) {
-      // It's possible for the cluster/detector to go away while we still have a host in use.
-      return;
-    }
-  
-  // Returned shared object is safe to operate on. If the other thread decrements the ownership count by for example
+  std::shared_ptr<DetectorImpl> detector = detector_.lock();
+  if (!detector) {
+    // It's possible for the cluster/detector to go away while we still have a host in use.
+    return;
+  }
+
+  // Returned shared object is safe to operate on. If an other thread decrements the ownership count
   // during the configuration update the shared pointer stays safe to operate on.
   for (auto& monitor : detector->config().monitorsSet()->monitors()) {
-  if (monitor->reportResult(LocalOriginEvent(result))) {
-    // Do something similar to onConsecutive5xx.
-    detector->notifyMainThreadError(host_.lock());
-  }
+    if (monitor->reportResult(LocalOriginEvent(result))) {
+      // Do something similar to onConsecutive5xx.
+      detector->notifyMainThreadError(host_.lock());
     }
-    
+  }
 }
 
 void DetectorHostMonitorImpl::putResult(const Error& error) {
-    std::shared_ptr<DetectorImpl> detector = detector_.lock();
-    if (!detector) {
-      // It's possible for the cluster/detector to go away while we still have a host in use.
-      return;
-    }
-  
-  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
-  if (monitor->reportResult(error)) {
-    // Do something similar to onConsecutive5xx.
-    detector->notifyMainThreadError(host_.lock());
+  std::shared_ptr<DetectorImpl> detector = detector_.lock();
+  if (!detector) {
+    // It's possible for the cluster/detector to go away while we still have a host in use.
+    return;
   }
+
+  for (auto& monitor : detector->config().monitorsSet()->monitors()) {
+    if (monitor->reportResult(error)) {
+      // Do something similar to onConsecutive5xx.
+      detector->notifyMainThreadError(host_.lock());
     }
-    
+  }
 }
 
 void DetectorHostMonitorImpl::localOriginFailure() {
@@ -310,77 +307,57 @@ DetectorConfig::DetectorConfig(const envoy::config::cluster::v3::OutlierDetectio
       max_ejection_time_jitter_ms_(static_cast<uint64_t>(PROTOBUF_GET_MS_OR_DEFAULT(
           config, max_ejection_time_jitter, DEFAULT_MAX_EJECTION_TIME_JITTER_MS))) {
 
-    //std::shared_ptr<MonitorsSet> monitors_set;
-    monitors_set_ = std::make_shared<MonitorsSet>();
+  monitors_set_ = std::make_shared<MonitorsSet>();
 
-    // Build buckets for consecutive errors:
-    for (auto i = 0; i < config.consecutive_errors_size(); i++) {
-        const auto& ce = config.consecutive_errors(i);
-        // TODO: use default if not specified.
-        MonitorPtr monitor = std::make_unique<ConsecutiveFailuresMonitor>(PROTOBUF_GET_WRAPPED_OR_DEFAULT(ce, threshold, 3));
-        for (auto b = 0; b < ce.error_buckets_size(); b++) {
-            const auto& be = ce.error_buckets(b);
-            if (be.has_http_errors()) {
-            const auto& httpe = be.http_errors();
-            HTTPErrorCodesBucketPtr bucket = std::make_unique<HTTPErrorCodesBucket>("test", httpe.range().start(), httpe.range().end());
-            monitor->addErrorBucket(std::move(bucket));
-            continue;
-            }
-            if (be.has_local_origin_events()) {
-                monitor->addErrorBucket(std::make_unique<LocalOriginEventsBucket>());
-                continue;
-            }
-            if (be.has_database_transactions()) {
-                monitor->addErrorBucket(std::make_unique<DatabaseTransactionsBucket>());
-                continue;
-            }
+  // Build buckets for consecutive errors:
+  for (auto i = 0; i < config.consecutive_errors_size(); i++) {
+    const auto& ce = config.consecutive_errors(i);
+    // TODO: use default if not specified.
+    MonitorPtr monitor = std::make_unique<ConsecutiveFailuresMonitor>(
+        PROTOBUF_GET_WRAPPED_OR_DEFAULT(ce, threshold, 3));
+    for (auto b = 0; b < ce.error_buckets_size(); b++) {
+      const auto& be = ce.error_buckets(b);
+      if (be.has_http_errors()) {
+        const auto& httpe = be.http_errors();
+        HTTPErrorCodesBucketPtr bucket = std::make_unique<HTTPErrorCodesBucket>(
+            "test", httpe.range().start(), httpe.range().end());
+        monitor->addErrorBucket(std::move(bucket));
+        continue;
+      }
+      if (be.has_local_origin_events()) {
+        monitor->addErrorBucket(std::make_unique<LocalOriginEventsBucket>());
+        continue;
+      }
+      if (be.has_database_transactions()) {
+        monitor->addErrorBucket(std::make_unique<DatabaseTransactionsBucket>());
+        continue;
+      }
     }
-        monitors_set_->addMonitor(std::move(monitor));
-    }
-
-    // Finally set shared ptr in 
+    monitors_set_->addMonitor(std::move(monitor));
+  }
 }
-
-#if 0
-bool Monitor::eject(uint64_t code) {
-  for(auto& bucket : buckets_) {
-    if (bucket->contains(code)) {
-        // increase number of errors and compare to threshold.
-        counter_++;
-        tripped_ = (counter_ >= threshold_);
-        return tripped_;
-    }
-  } 
-
-  // none of the buckets caught the error.
-  counter_ = 0;
-
-  return false;
-}
-#endif
-
 
 void Monitor::addErrorBucket(ErrorsBucketPtr&& bucket) {
-    if (buckets_.find(bucket->type()) == buckets_.end()) {
-         buckets_[bucket->type()] = std::vector<ErrorsBucketPtr>();
-    }
-    buckets_[bucket->type()].push_back(std::move(bucket));
-}    
+  if (buckets_.find(bucket->type()) == buckets_.end()) {
+    buckets_[bucket->type()] = std::vector<ErrorsBucketPtr>();
+  }
+  buckets_[bucket->type()].push_back(std::move(bucket));
+}
 
 bool ConsecutiveFailuresMonitor::reportResult(const Error& error) {
-// Get type of the error and check if it contains buckets interested in that type.
-    if (buckets_.find(error.type()) == buckets_.end()) {
-        return false;
-    }
+  // Get type of the error and check if it contains buckets interested in that type.
+  if (buckets_.find(error.type()) == buckets_.end()) {
+    return false;
+  }
 
-  for(const auto& bucket : buckets_[error.type()]) {
+  for (const auto& bucket : buckets_[error.type()]) {
     if (bucket->matches(error)) {
-        // increase number of errors and compare to threshold.
-        counter_++;
-        tripped_ = (counter_ >= threshold_);
-        return tripped_;
+      // increase number of errors and compare to threshold.
+      counter_++;
+      tripped_ = (counter_ >= threshold_);
+      return tripped_;
     }
-  } 
+  }
 
   // none of the buckets caught the error.
   counter_ = 0;
@@ -389,28 +366,27 @@ bool ConsecutiveFailuresMonitor::reportResult(const Error& error) {
 }
 
 bool HTTPErrorCodesBucket::matches(const Error& error) const {
-    // We should not get here with errors other then HTTP codes.
-    ASSERT(error.type() == ErrorType::HTTP_CODE);
-    const HttpCode& http_code = *static_cast<const HttpCode*>(&error); 
-        return ((http_code.code() >= start_) && (http_code.code() < end_));
-    
+  // We should not get here with errors other then HTTP codes.
+  ASSERT(error.type() == ErrorType::HTTP_CODE);
+  const HttpCode& http_code = *static_cast<const HttpCode*>(&error);
+  return ((http_code.code() >= start_) && (http_code.code() < end_));
 }
 
-bool LocalOriginEventsBucket::matches (const Error& error) const {
-    ASSERT(error.type() == ErrorType::LOCAL_ORIGIN);
-    const LocalOriginEvent& event = *static_cast<const LocalOriginEvent*>(&error); 
+bool LocalOriginEventsBucket::matches(const Error& error) const {
+  ASSERT(error.type() == ErrorType::LOCAL_ORIGIN);
+  const LocalOriginEvent& event = *static_cast<const LocalOriginEvent*>(&error);
 
-    // Capture all events except the success
-    return (!((event.result() == Result::LocalOriginConnectSuccessFinal) || (event.result() == Result::ExtOriginRequestSuccess)));
-} 
+  // Capture all events except the success
+  return (!((event.result() == Result::LocalOriginConnectSuccessFinal) ||
+            (event.result() == Result::ExtOriginRequestSuccess)));
+}
 
 bool DatabaseTransactionsBucket::matches(const Error& error) const {
-    ASSERT(error.type() == ErrorType::DATABASE);
-    const DBTransaction& db = *static_cast<const DBTransaction*>(&error); 
+  ASSERT(error.type() == ErrorType::DATABASE);
+  const DBTransaction& db = *static_cast<const DBTransaction*>(&error);
 
-    return !db.result();
+  return !db.result();
 }
-
 
 DetectorImpl::DetectorImpl(const Cluster& cluster,
                            const envoy::config::cluster::v3::OutlierDetection& config,
@@ -504,7 +480,7 @@ void DetectorImpl::checkHostForUneject(HostSharedPtr host, DetectorHostMonitorIm
       runtime_.snapshot().getInteger(BaseEjectionTimeMsRuntime, config_.baseEjectionTimeMs()));
   const std::chrono::milliseconds max_eject_time = std::chrono::milliseconds(
       runtime_.snapshot().getInteger(MaxEjectionTimeMsRuntime, config_.maxEjectionTimeMs()));
-  const std::chrono::milliseconds jitter = std::chrono::milliseconds(0); //monitor->getJitter();
+  const std::chrono::milliseconds jitter = std::chrono::milliseconds(0); // monitor->getJitter();
   ASSERT(monitor->numEjections() > 0);
   if ((min(base_eject_time * monitor->ejectTimeBackoff(), max_eject_time) + jitter) <=
       (now - monitor->lastEjectionTime().value())) {
@@ -517,12 +493,9 @@ void DetectorImpl::checkHostForUneject(HostSharedPtr host, DetectorHostMonitorIm
     host_monitors_[host]->resetConsecutiveLocalOriginFailure();
 
     for (auto& monitor : config_.monitorsSet()->monitors()) {
-        monitor->reset();
+      monitor->reset();
     }
-        std::chrono::milliseconds(max_eject_time).count(), 
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
-  std::chrono::duration_cast<std::chrono::milliseconds>(min(base_eject_time * monitor->ejectTimeBackoff(), max_eject_time) + jitter).count(),
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - monitor->lastEjectionTime().value()).count());
+
     monitor->uneject(now);
     runCallbacks(host);
 
@@ -617,14 +590,14 @@ void DetectorImpl::updateDetectedEjectionStats(envoy::data::cluster::v3::Outlier
 }
 
 void DetectorImpl::ejectHost(HostSharedPtr host) {
-    // Find the monitor which triggered ejection.
+  // Find the monitor which triggered ejection.
 
-    for (const auto& monitor : config_.monitorsSet()->monitors()) {
-        if (monitor->tripped()) {
-            // TODO: check for maximum number of hosts which can be ejected.
+  for (const auto& monitor : config_.monitorsSet()->monitors()) {
+    if (monitor->tripped()) {
+      // TODO: check for maximum number of hosts which can be ejected.
       ejections_active_helper_.inc();
-            host_monitors_[host]->eject(time_source_.monotonicTime());
-            runCallbacks(host);
+      host_monitors_[host]->eject(time_source_.monotonicTime());
+      runCallbacks(host);
       const std::chrono::milliseconds base_eject_time = std::chrono::milliseconds(
           runtime_.snapshot().getInteger(BaseEjectionTimeMsRuntime, config_.baseEjectionTimeMs()));
       const std::chrono::milliseconds max_eject_time = std::chrono::milliseconds(
@@ -635,9 +608,9 @@ void DetectorImpl::ejectHost(HostSharedPtr host) {
         host_monitors_[host]->ejectTimeBackoff()++;
       }
 
-            return; 
-        }
+      return;
     }
+  }
 }
 
 void DetectorImpl::ejectHost(HostSharedPtr host,

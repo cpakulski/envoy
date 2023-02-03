@@ -18,28 +18,28 @@ option go_package = "github.com/envoyproxy/go-control-plane/envoy/config/cluster
 option (udpa.annotations.file_status).package_version_status = ACTIVE;
 
 // [#protodoc-title: Outlier detection]
-  // Error bucket for HTTP codes
-  message HttpErrorsBucket {
-    string  name = 1;
-    type.v3.Int32Range range = 2;
-  }
-  
-  // Error bucket for locally originated errors
-  message LocalOriginEvents {
-  }
+// Error bucket for HTTP codes
+message HttpErrorsBucket {
+  string name = 1;
+  type.v3.Int32Range range = 2;
+}
 
-  // Error bucket for database errors.
-  // Subparameters amy be added later, like malformed response, error on write, etc.
-  message DatabaseTransactions {
-  }
- 
-  message ErrorBucket {
+// Error bucket for locally originated errors
+message LocalOriginEvents {
+}
+
+// Error bucket for database errors.
+// Sub-parameters may be added later, like malformed response, error on write, etc.
+message DatabaseTransactions {
+}
+
+message ErrorBucket {
   oneof bucket {
-     HttpErrorsBucket http_errors = 1;
-     LocalOriginEvents local_origin_events = 2;
-     DatabaseTransactions database_transactions = 3;
-    }
+    HttpErrorsBucket http_errors = 1;
+    LocalOriginEvents local_origin_events = 2;
+    DatabaseTransactions database_transactions = 3;
   }
+}
 
 // See the :ref:`architecture overview <arch_overview_outlier_detection>` for
 // more information on outlier detection.
@@ -190,7 +190,7 @@ message OutlierDetection {
     string name = 1;
     google.protobuf.UInt32Value threshold = 2 [(validate.rules).uint32 = {lte: 100}];
     google.protobuf.UInt32Value enforcing = 3 [(validate.rules).uint32 = {lte: 100}];
-    repeated ErrorBucket error_buckets  = 4;
+    repeated ErrorBucket error_buckets = 4;
   }
 
   repeated ConsecutiveErrors consecutive_errors = 23;

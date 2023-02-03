@@ -135,145 +135,134 @@ private:
 class DetectorImpl;
 
 enum class ErrorType {
-        // types of possible errors
-        HTTP_CODE,
-        LOCAL_ORIGIN,
-        DATABASE,
-        };
+  // types of possible errors
+  HTTP_CODE,
+  LOCAL_ORIGIN,
+  DATABASE,
+};
 
 // Base class for category of errors which may be reported to a monitor.
 // Errors will be caught by buckets matching the type of error.
-#if 0
-template<ErrorType T>
-class ErrorValue {
-    static enum {
-        // types of possible errors
-        HTTP_CODE,
-        LOCAL_ORIGIN
-        } Type;
-   ErrorType type() const {return T;}
-};
-#endif
-
 class Error {
 public:
-    virtual ErrorType type() const PURE; 
-    virtual ~Error() = default;// {}
+  virtual ErrorType type() const PURE;
+  virtual ~Error() = default;
 };
 
 // Http code error
-class HttpCode : public Error {//, public ErrorValue<ErrorType::HTTP_CODE> {
-    public:
-        HttpCode(uint64_t code) : code_(code) {}
-        HttpCode() = delete;
-        ErrorType type() const override {return ErrorType::HTTP_CODE;}
-        virtual ~HttpCode() {}
-        uint64_t code() const {return code_;}
- private:
-    uint64_t code_;
+class HttpCode : public Error {
+public:
+  HttpCode(uint64_t code) : code_(code) {}
+  HttpCode() = delete;
+  ErrorType type() const override { return ErrorType::HTTP_CODE; }
+  virtual ~HttpCode() {}
+  uint64_t code() const { return code_; }
+
+private:
+  uint64_t code_;
 };
 
-//TODO: Can type be moved to Error<Type>?
-// Or force Error contructor to take the type and implement type() method to return that type.
+// TODO: Can type be moved to Error<Type>?
+//  Or force Error constructor to take the type and implement type() method to return that type.
 class LocalOriginEvent : public Error {
 public:
-      LocalOriginEvent(Result result) : result_(result){}
-      LocalOriginEvent() = delete;
-        ErrorType type() const override {return ErrorType::LOCAL_ORIGIN;}
+  LocalOriginEvent(Result result) : result_(result) {}
+  LocalOriginEvent() = delete;
+  ErrorType type() const override { return ErrorType::LOCAL_ORIGIN; }
 
-      Result result() const {return result_;}
+  Result result() const { return result_; }
+
 private:
-    Result result_;
+  Result result_;
 };
 
 class DBTransaction : public Error {
 public:
-    DBTransaction() = delete;
-    DBTransaction(bool result) : result_(result) {}
-    ErrorType type() const override {return ErrorType::DATABASE;}
+  DBTransaction() = delete;
+  DBTransaction(bool result) : result_(result) {}
+  ErrorType type() const override { return ErrorType::DATABASE; }
 
-    bool result() const {return result_;}
+  bool result() const { return result_; }
+
 private:
-    bool result_;
+  bool result_;
 };
-
 
 class ErrorsBucket {
 public:
-    virtual bool matches(const Error&) const PURE;
-    virtual ErrorType type() const PURE;
-    virtual ~ErrorsBucket() {}
+  virtual bool matches(const Error&) const PURE;
+  virtual ErrorType type() const PURE;
+  virtual ~ErrorsBucket() {}
 };
 
-   using ErrorsBucketPtr = std::unique_ptr<ErrorsBucket>;
+using ErrorsBucketPtr = std::unique_ptr<ErrorsBucket>;
 
-  // class defines consecutive range of HTTP codes.
-  class HTTPErrorCodesBucket : public ErrorsBucket {
-       public:
-        ErrorType type() const override {return ErrorType::HTTP_CODE;}
-        HTTPErrorCodesBucket() = delete;
-        HTTPErrorCodesBucket(const std::string& name, uint64_t start, uint64_t end) : name_(name), start_(start), end_(end) {}
+// class defines consecutive range of HTTP codes.
+class HTTPErrorCodesBucket : public ErrorsBucket {
+public:
+  ErrorType type() const override { return ErrorType::HTTP_CODE; }
+  HTTPErrorCodesBucket() = delete;
+  HTTPErrorCodesBucket(const std::string& name, uint64_t start, uint64_t end)
+      : name_(name), start_(start), end_(end) {}
 
-        const std::string& name() {return name_;}
-        bool contains(uint64_t code) {return ((code >= start_) && (code < end_));}
-        bool matches(const Error&) const override;
+  const std::string& name() { return name_; }
+  bool contains(uint64_t code) { return ((code >= start_) && (code < end_)); }
+  bool matches(const Error&) const override;
 
-        virtual ~HTTPErrorCodesBucket() {}
-    private:
-        std::string name_; 
-        uint64_t start_, end_;
-    };
+  virtual ~HTTPErrorCodesBucket() {}
 
-   using HTTPErrorCodesBucketPtr = std::unique_ptr<HTTPErrorCodesBucket>;
+private:
+  std::string name_;
+  uint64_t start_, end_;
+};
+
+using HTTPErrorCodesBucketPtr = std::unique_ptr<HTTPErrorCodesBucket>;
 
 // Class defines Local Origin Events
-  class LocalOriginEventsBucket : public ErrorsBucket {
-    public:
-        ErrorType type() const override {return ErrorType::LOCAL_ORIGIN;}
-        LocalOriginEventsBucket() = default;
-        bool matches (const Error&) const override;
+class LocalOriginEventsBucket : public ErrorsBucket {
+public:
+  ErrorType type() const override { return ErrorType::LOCAL_ORIGIN; }
+  LocalOriginEventsBucket() = default;
+  bool matches(const Error&) const override;
 };
-    using LocalOriginEventsBucketPtr = std::unique_ptr<LocalOriginEventsBucket>;
+using LocalOriginEventsBucketPtr = std::unique_ptr<LocalOriginEventsBucket>;
 
-  class DatabaseTransactionsBucket : public ErrorsBucket {
-    public:
-        ErrorType type() const override {return ErrorType::DATABASE;}
-        DatabaseTransactionsBucket() = default;
-        bool matches (const Error&) const override;
+class DatabaseTransactionsBucket : public ErrorsBucket {
+public:
+  ErrorType type() const override { return ErrorType::DATABASE; }
+  DatabaseTransactionsBucket() = default;
+  bool matches(const Error&) const override;
 };
 
-  // Class groups error buckets. Buckets may be of different types.
-  class Monitor {
-    public:
-        virtual ~Monitor() {}
-        void addErrorBucket(ErrorsBucketPtr&& bucket);// {buckets_.push_back(std::move(bucket));}
-        //bool eject(uint64_t code);
-        virtual bool reportResult(const Error&) PURE;
-    //private:
-        //std::vector<ErrorsBucketPtr> buckets_;
-        absl::flat_hash_map<ErrorType, std::vector<ErrorsBucketPtr>> buckets_;
+// Class groups error buckets. Buckets may be of different types.
+class Monitor {
+public:
+  virtual ~Monitor() {}
+  void addErrorBucket(ErrorsBucketPtr&& bucket); // {buckets_.push_back(std::move(bucket));}
+  virtual bool reportResult(const Error&) PURE;
+  absl::flat_hash_map<ErrorType, std::vector<ErrorsBucketPtr>> buckets_;
 
-        bool tripped() const {return tripped_;}
-        virtual void reset() PURE;
-    protected:
-        bool tripped_{false};
-  };
+  bool tripped() const { return tripped_; }
+  virtual void reset() PURE;
 
-  class ConsecutiveFailuresMonitor : public Monitor {
-  public:
-        ConsecutiveFailuresMonitor() = delete;
-        ConsecutiveFailuresMonitor(uint64_t threshold) : threshold_(threshold) {}
-        bool reportResult(const Error&) override;
-        void reset() override {counter_ = 0;} 
+protected:
+  bool tripped_{false};
+};
 
-  private:
-        // Consecutive failures monitor simply increments a counter and compares to threashold.
-        std::atomic<uint64_t> counter_{0};
-        uint64_t threshold_;
-    };
+class ConsecutiveFailuresMonitor : public Monitor {
+public:
+  ConsecutiveFailuresMonitor() = delete;
+  ConsecutiveFailuresMonitor(uint64_t threshold) : threshold_(threshold) {}
+  bool reportResult(const Error&) override;
+  void reset() override { counter_ = 0; }
 
+private:
+  // Consecutive failures monitor simply increments a counter and compares to threshold.
+  std::atomic<uint64_t> counter_{0};
+  uint64_t threshold_;
+};
 
-  using MonitorPtr = std::unique_ptr<Monitor>;
+using MonitorPtr = std::unique_ptr<Monitor>;
 
 /**
  * Implementation of DetectorHostMonitor for the generic detector.
@@ -353,8 +342,6 @@ private:
   // jitter for outlier ejection time
   std::chrono::milliseconds jitter_;
 
-  //std::shared_ptr<ErrorBuckets> buckets_;
-
   // success rate monitors:
   // - external_origin: for all events when external/local are not split
   //   and for external origin failures when external/local events are split
@@ -367,8 +354,6 @@ private:
   void putResultWithLocalExternalSplit(Result result, absl::optional<uint64_t> code);
   std::function<void(DetectorHostMonitorImpl*, Result, absl::optional<uint64_t> code)>
       put_result_func_;
-
-  //std::shared_ptr<Monitor>
 };
 
 /**
@@ -446,17 +431,16 @@ constexpr absl::string_view MaxEjectionTimeJitterMsRuntime =
  * Configuration for the outlier detection.
  */
 class MonitorsSet {
-    public:
-        void addMonitor(MonitorPtr&& monitor) {monitors_.push_back(std::move(monitor));}
-        const std::vector<MonitorPtr>& monitors() {return monitors_;}
+public:
+  void addMonitor(MonitorPtr&& monitor) { monitors_.push_back(std::move(monitor)); }
+  const std::vector<MonitorPtr>& monitors() { return monitors_; }
 
-    private:
+private:
   std::vector<MonitorPtr> monitors_;
 };
 
 class DetectorConfig {
 public:
-
   DetectorConfig(const envoy::config::cluster::v3::OutlierDetection& config);
 
   uint64_t intervalMs() const { return interval_ms_; }
@@ -488,7 +472,7 @@ public:
   uint64_t maxEjectionTimeMs() const { return max_ejection_time_ms_; }
   uint64_t maxEjectionTimeJitterMs() const { return max_ejection_time_jitter_ms_; }
 
-//private:
+  // private:
   const uint64_t interval_ms_;
   const uint64_t base_ejection_time_ms_;
   const uint64_t consecutive_5xx_;
@@ -534,13 +518,11 @@ public:
   static constexpr uint64_t DEFAULT_MAX_EJECTION_TIME_MS = 10 * DEFAULT_BASE_EJECTION_TIME_MS;
   static constexpr uint64_t DEFAULT_MAX_EJECTION_TIME_JITTER_MS = 0;
   // explicitly call constructor to increment ownership count of the shared pointer.
-  std::shared_ptr<MonitorsSet> monitorsSet() {return std::shared_ptr<MonitorsSet>(monitors_set_);}
+  std::shared_ptr<MonitorsSet> monitorsSet() { return std::shared_ptr<MonitorsSet>(monitors_set_); }
 
 private:
-//  std::vector<MonitorPtr> monitors_;
   std::shared_ptr<MonitorsSet> monitors_set_;
 };
-
 
 /**
  * An implementation of an outlier detector. In the future we may support multiple outlier detection

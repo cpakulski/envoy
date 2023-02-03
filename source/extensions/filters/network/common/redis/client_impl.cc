@@ -216,10 +216,10 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   request.aggregate_request_timer_->complete();
 
   if (!config_.disableOutlierEvents()) {
-  if (value->type() == Common::Redis::RespType::Error) {
-    host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(false));
-  } else {
-    host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(true));
+    if (value->type() == Common::Redis::RespType::Error) {
+      host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(false));
+    } else {
+      host_->outlierDetector().putResult(Upstream::Outlier::DBTransaction(true));
     }
   }
 
