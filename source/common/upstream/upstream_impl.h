@@ -200,13 +200,15 @@ public:
     return cluster().resourceManager(priority).connections().canCreate();
   }
 
-  Outlier::DetectorHostMonitor& outlierDetector() const override {
+  Outlier::DetectorHostMonitorPtr outlierDetector() const override {
+    Thread::LockGuard lock(lock_);
     if (outlier_detector_) {
-      return *outlier_detector_;
+      return outlier_detector_;
     }
 
-    static DetectorHostMonitorNullImpl* null_outlier_detector = new DetectorHostMonitorNullImpl();
-    return *null_outlier_detector;
+    static Outlier::DetectorHostMonitorPtr null_outlier_detector =
+        Outlier::DetectorHostMonitorPtr{new DetectorHostMonitorNullImpl()};
+    return null_outlier_detector;
   }
   HostStats& stats() const override { return stats_; }
   LoadMetricStats& loadMetricStats() const override { return load_metric_stats_; }
@@ -246,6 +248,7 @@ protected:
   }
 
   void setOutlierDetectorImpl(Outlier::DetectorHostMonitorPtr&& outlier_detector) {
+    Thread::LockGuard lock(lock_);
     outlier_detector_ = std::move(outlier_detector);
   }
 
@@ -268,6 +271,10 @@ private:
   mutable HostStats stats_;
   mutable LoadMetricStatsImpl load_metric_stats_;
   Outlier::DetectorHostMonitorPtr outlier_detector_;
+  // TODO (cpakulski): outlier_detector_ and lock_ may be replaced
+  // by std::atomic<Outlier::DetectorHostMonitorPtr> outlier_detector_
+  // when Envoy moves to C++20.
+  mutable Thread::MutexBasicLockable lock_{};
   HealthCheckHostMonitorPtr health_checker_;
   std::atomic<uint32_t> priority_;
   std::reference_wrapper<Network::UpstreamTransportSocketFactory>

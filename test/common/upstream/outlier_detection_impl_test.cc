@@ -101,13 +101,13 @@ public:
 
   void loadRq(HostSharedPtr host, int num_rq, int http_code) {
     for (int i = 0; i < num_rq; i++) {
-      host->outlierDetector().putHttpResponseCode(http_code);
+      host->outlierDetector()->putHttpResponseCode(http_code);
     }
   }
 
   void loadRq(HostSharedPtr host, int num_rq, Result result) {
     for (int i = 0; i < num_rq; i++) {
-      host->outlierDetector().putResult(result);
+      host->outlierDetector()->putResult(result);
     }
   }
 
@@ -301,7 +301,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodes) {
   // Cause a consecutive 5xx error on host[0] by reporting HTTP codes.
   loadRq(hosts_[0], 1, 500);
   loadRq(hosts_[0], 1, 200);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 500);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -317,7 +317,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodes) {
   time_system_.setMonotonicTime(std::chrono::milliseconds(9999));
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
-  EXPECT_FALSE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_FALSE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Interval that does bring the host back in.
   time_system_.setMonotonicTime(std::chrono::milliseconds(30001));
@@ -327,10 +327,10 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodes) {
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Eject host again to cause an ejection after an unejection has taken place
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 500);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(40000));
@@ -377,7 +377,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodesWithActiveHC) {
   // Cause a consecutive 5xx error on host[0] by reporting HTTP codes.
   loadRq(hosts_[0], 1, 500);
   loadRq(hosts_[0], 1, 200);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 500);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -405,7 +405,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodesWithActiveHC) {
   // Cause a consecutive 5xx error again on host[0] by reporting HTTP codes.
   loadRq(hosts_[0], 1, 500);
   loadRq(hosts_[0], 1, 200);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 500);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -431,7 +431,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaHttpCodesWithActiveHC) {
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
   // Eject host again to cause an ejection after an unejection has taken place
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 500);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(40000));
@@ -470,9 +470,9 @@ TEST_F(OutlierDetectorImplTest, ConnectSuccessWithOptionalHTTP_OK) {
   // cancels LOCAL_ORIGIN_CONNECT_FAILED.
   // such scenario is used by tcp_proxy.
   for (auto i = 0; i < 100; i++) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectSuccess,
-                                           absl::optional<uint64_t>(enumToInt(Http::Code::OK)));
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectSuccess,
+                                            absl::optional<uint64_t>(enumToInt(Http::Code::OK)));
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   }
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 }
@@ -494,8 +494,8 @@ TEST_F(OutlierDetectorImplTest, ExternalOriginEventsNonSplit) {
   // Make sure that EXT_ORIGIN_REQUEST_SUCCESS cancels EXT_ORIGIN_REQUEST_FAILED
   // such scenario is used by redis filter.
   for (auto i = 0; i < 100; i++) {
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestFailed);
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestSuccess);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestSuccess);
   }
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
@@ -504,7 +504,7 @@ TEST_F(OutlierDetectorImplTest, ExternalOriginEventsNonSplit) {
   EXPECT_CALL(*event_logger_, logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]),
                                        _, envoy::data::cluster::v3::CONSECUTIVE_5XX, true));
   for (auto i = 0; i < 100; i++) {
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestFailed);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 }
@@ -524,7 +524,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaNonHttpCodes) {
   // Cause a consecutive 5xx error on host[0] by reporting Non-HTTP codes.
   loadRq(hosts_[0], 1, Result::LocalOriginConnectFailed);
   loadRq(hosts_[0], 1, 200);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, Result::LocalOriginConnectFailed);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -543,7 +543,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaNonHttpCodes) {
   time_system_.setMonotonicTime(std::chrono::milliseconds(9999));
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
-  EXPECT_FALSE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_FALSE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Interval that does bring the host back in.
   time_system_.setMonotonicTime(std::chrono::milliseconds(30001));
@@ -553,10 +553,10 @@ TEST_F(OutlierDetectorImplTest, BasicFlow5xxViaNonHttpCodes) {
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Eject host again to cause an ejection after an unejection has taken place
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, Result::LocalOriginConnectFailed);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(40000));
@@ -608,7 +608,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailure) {
   // Cause a consecutive 5xx error.
   loadRq(hosts_[0], 1, 503);
   loadRq(hosts_[0], 1, 500);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 2, 503);
   EXPECT_CALL(*event_logger_, logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]),
                                        _, envoy::data::cluster::v3::CONSECUTIVE_5XX, false));
@@ -628,7 +628,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailure) {
   time_system_.setMonotonicTime(std::chrono::milliseconds(9999));
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
-  EXPECT_FALSE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_FALSE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Interval that does bring the host back in.
   time_system_.setMonotonicTime(std::chrono::milliseconds(30001));
@@ -638,10 +638,10 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailure) {
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Eject host again to cause an ejection after an unejection has taken place
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 503);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(40000));
@@ -701,8 +701,8 @@ TEST_F(OutlierDetectorImplTest, TimeoutWithHttpCode) {
   uint32_t n =
       runtime_.snapshot_.getInteger(Consecutive5xxRuntime, detector->config().consecutive5xx());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout,
-                                           absl::optional<uint64_t>(500));
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout,
+                                            absl::optional<uint64_t>(500));
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
@@ -723,8 +723,8 @@ TEST_F(OutlierDetectorImplTest, TimeoutWithHttpCode) {
   // Get the configured number of failures and simulate than number of connect failures.
   n = runtime_.snapshot_.getInteger(Consecutive5xxRuntime, detector->config().consecutive5xx());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout,
-                                           absl::optional<uint64_t>(200));
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout,
+                                            absl::optional<uint64_t>(200));
   }
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
@@ -740,7 +740,7 @@ TEST_F(OutlierDetectorImplTest, TimeoutWithHttpCode) {
   n = runtime_.snapshot_.getInteger(ConsecutiveGatewayFailureRuntime,
                                     detector->config().consecutiveGatewayFailure());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 }
@@ -776,14 +776,14 @@ TEST_F(OutlierDetectorImplTest, LargeNumberOfTimeouts) {
   uint32_t n =
       runtime_.snapshot_.getInteger(Consecutive5xxRuntime, detector->config().consecutive5xx());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
   // Simulate more timeouts after the host have been ejected.
   n = 2 * runtime_.snapshot_.getInteger(Consecutive5xxRuntime, detector->config().consecutive5xx());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout);
   }
 
   // Wait until the host is unejected.
@@ -802,7 +802,7 @@ TEST_F(OutlierDetectorImplTest, LargeNumberOfTimeouts) {
                        envoy::data::cluster::v3::CONSECUTIVE_LOCAL_ORIGIN_FAILURE, true));
   n = runtime_.snapshot_.getInteger(Consecutive5xxRuntime, detector->config().consecutive5xx());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginTimeout);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginTimeout);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 }
@@ -833,7 +833,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowLocalOriginFailure) {
   uint32_t n = runtime_.snapshot_.getInteger(ConsecutiveLocalOriginFailureRuntime,
                                              detector->config().consecutiveLocalOriginFailure());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
   EXPECT_EQ(1UL, outlier_detection_ejections_active_.value());
@@ -842,14 +842,14 @@ TEST_F(OutlierDetectorImplTest, BasicFlowLocalOriginFailure) {
   n = runtime_.snapshot_.getInteger(ConsecutiveLocalOriginFailureRuntime,
                                     detector->config().consecutiveLocalOriginFailure());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   }
 
   // Wait short time - not enough to be unejected
   time_system_.setMonotonicTime(std::chrono::milliseconds(9999));
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
-  EXPECT_FALSE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_FALSE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Interval that does bring the host back in.
   time_system_.setMonotonicTime(std::chrono::milliseconds(30001));
@@ -859,7 +859,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowLocalOriginFailure) {
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
   EXPECT_EQ(0UL, outlier_detection_ejections_active_.value());
 
   // Simulate connection failures to trigger another ejection
@@ -871,7 +871,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowLocalOriginFailure) {
   n = runtime_.snapshot_.getInteger(ConsecutiveLocalOriginFailureRuntime,
                                     detector->config().consecutiveLocalOriginFailure());
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   }
   EXPECT_EQ(1UL, outlier_detection_ejections_active_.value());
 
@@ -893,14 +893,14 @@ TEST_F(OutlierDetectorImplTest, BasicFlowLocalOriginFailure) {
                                     detector->config().consecutiveLocalOriginFailure());
   n--; // make sure that this is not enough for ejection.
   while (n--) {
-    hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   }
   // now success and few failures
-  hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectSuccess);
-  hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
-  hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectFailed);
+  hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectSuccess);
+  hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
+  hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectFailed);
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Check stats
   EXPECT_EQ(
@@ -943,7 +943,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailureAnd5xx) {
   // Cause a consecutive 5xx error.
   loadRq(hosts_[0], 1, 503);
   loadRq(hosts_[0], 1, 200);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 4, 503);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -960,7 +960,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailureAnd5xx) {
   time_system_.setMonotonicTime(std::chrono::milliseconds(9999));
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
-  EXPECT_FALSE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_FALSE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Interval that does bring the host back in.
   time_system_.setMonotonicTime(std::chrono::milliseconds(30001));
@@ -970,10 +970,10 @@ TEST_F(OutlierDetectorImplTest, BasicFlowGatewayFailureAnd5xx) {
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(10000), _));
   interval_timer_->invokeCallback();
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
-  EXPECT_TRUE(hosts_[0]->outlierDetector().lastUnejectionTime());
+  EXPECT_TRUE(hosts_[0]->outlierDetector()->lastUnejectionTime());
 
   // Eject host again but with a mix of 500s and 503s to trigger 5xx ejection first
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 2, 503);
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
   loadRq(hosts_[0], 2, 500);
@@ -1041,8 +1041,8 @@ TEST_F(OutlierDetectorImplTest, BasicFlowNonHttpCodesExternalOrigin) {
   // Make sure that one CONNECT_SUCCESS with optional code zero, does not
   // interrupt sequence of LOCAL_ORIGIN_CONNECT_FAILED.
   loadRq(hosts_[0], 1, Result::LocalOriginConnectFailed);
-  hosts_[0]->outlierDetector().putResult(Result::LocalOriginConnectSuccess);
-  hosts_[0]->outlierDetector().putResponseTime(std::chrono::milliseconds(5));
+  hosts_[0]->outlierDetector()->putResult(Result::LocalOriginConnectSuccess);
+  hosts_[0]->outlierDetector()->putResponseTime(std::chrono::milliseconds(5));
   loadRq(hosts_[0], 3, Result::LocalOriginConnectFailed);
 
   time_system_.setMonotonicTime(std::chrono::milliseconds(0));
@@ -1101,14 +1101,14 @@ TEST_F(OutlierDetectorImplTest, BasicFlowSuccessRateExternalOrigin) {
   ON_CALL(runtime_.snapshot_, getInteger(SuccessRateStdevFactorRuntime, 1900))
       .WillByDefault(Return(1900));
   interval_timer_->invokeCallback();
-  EXPECT_EQ(50, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(90, detector->successRateAverage(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(52, detector->successRateEjectionThreshold(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   // Make sure that local origin success rate monitor is not affected
-  EXPECT_EQ(-1, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(-1, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(-1,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
@@ -1154,7 +1154,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowSuccessRateExternalOrigin) {
   // The success rate should be *calculated* since the minimum request volume was met for failure
   // percentage ejection, but the host should not be ejected.
   EXPECT_EQ(0UL, outlier_detection_ejections_active_.value());
-  EXPECT_EQ(50UL, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50UL, hosts_[4]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(-1, detector->successRateAverage(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
@@ -1173,8 +1173,8 @@ TEST_F(OutlierDetectorImplTest, ExternalOriginEventsWithSplit) {
                                                               event_logger_, random_));
 
   for (auto i = 0; i < 100; i++) {
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestFailed);
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestSuccess);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestSuccess);
   }
   EXPECT_FALSE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
@@ -1185,7 +1185,7 @@ TEST_F(OutlierDetectorImplTest, ExternalOriginEventsWithSplit) {
               logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]), _,
                        envoy::data::cluster::v3::CONSECUTIVE_GATEWAY_FAILURE, false));
   for (auto i = 0; i < 100; i++) {
-    hosts_[0]->outlierDetector().putResult(Result::ExtOriginRequestFailed);
+    hosts_[0]->outlierDetector()->putResult(Result::ExtOriginRequestFailed);
   }
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 }
@@ -1228,14 +1228,14 @@ TEST_F(OutlierDetectorImplTest, BasicFlowSuccessRateLocalOrigin) {
   ON_CALL(runtime_.snapshot_, getInteger(SuccessRateStdevFactorRuntime, 1900))
       .WillByDefault(Return(1900));
   interval_timer_->invokeCallback();
-  EXPECT_EQ(50, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(90,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(52, detector->successRateEjectionThreshold(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   // Make sure that external origin success rate monitor is not affected
-  EXPECT_EQ(-1, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(-1, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(-1, detector->successRateAverage(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
@@ -1278,7 +1278,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowSuccessRateLocalOrigin) {
   // The success rate should be *calculated* since the minimum request volume was met for failure
   // percentage ejection, but the host should not be ejected.
   EXPECT_EQ(0UL, outlier_detection_ejections_active_.value());
-  EXPECT_EQ(50UL, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50UL, hosts_[4]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(-1,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
@@ -1361,13 +1361,13 @@ TEST_F(OutlierDetectorImplTest, BasicFlowFailurePercentageExternalOrigin) {
       .WillByDefault(Return(1900));
   interval_timer_->invokeCallback();
   EXPECT_FLOAT_EQ(100.0 * (50.0 / 300.0),
-                  hosts_[3]->outlierDetector().successRate(
+                  hosts_[3]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_FLOAT_EQ(100.0 * (50.0 / 350.0),
-                  hosts_[4]->outlierDetector().successRate(
+                  hosts_[4]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   // Make sure that local origin success rate monitor is not affected
-  EXPECT_EQ(-1, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(-1, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(-1,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
@@ -1414,7 +1414,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowFailurePercentageExternalOrigin) {
   // The success rate should be *calculated* since the minimum request volume was met for failure
   // percentage ejection, but the host should not be ejected.
   EXPECT_EQ(0UL, outlier_detection_ejections_active_.value());
-  EXPECT_EQ(50UL, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50UL, hosts_[4]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(-1, detector->successRateAverage(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
@@ -1469,14 +1469,14 @@ TEST_F(OutlierDetectorImplTest, BasicFlowFailurePercentageLocalOrigin) {
   ON_CALL(runtime_.snapshot_, getInteger(FailurePercentageThresholdRuntime, 85))
       .WillByDefault(Return(40));
   interval_timer_->invokeCallback();
-  EXPECT_EQ(50, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(90,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(52, detector->successRateEjectionThreshold(
                     DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   // Make sure that external origin success rate monitor is not affected
-  EXPECT_EQ(-1, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(-1, hosts_[4]->outlierDetector()->successRate(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
   EXPECT_EQ(-1, detector->successRateAverage(
                     DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin));
@@ -1519,7 +1519,7 @@ TEST_F(OutlierDetectorImplTest, BasicFlowFailurePercentageLocalOrigin) {
   // The success rate should be *calculated* since the minimum request volume was met for failure
   // percentage ejection, but the host should not be ejected.
   EXPECT_EQ(0UL, outlier_detection_ejections_active_.value());
-  EXPECT_EQ(50UL, hosts_[4]->outlierDetector().successRate(
+  EXPECT_EQ(50UL, hosts_[4]->outlierDetector()->successRate(
                       DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
   EXPECT_EQ(-1,
             detector->successRateAverage(DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin));
@@ -1574,7 +1574,7 @@ TEST_F(OutlierDetectorImplTest, Overflow) {
   EXPECT_CALL(checker_, check(hosts_[0]));
   EXPECT_CALL(*event_logger_, logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]),
                                        _, envoy::data::cluster::v3::CONSECUTIVE_5XX, true));
-  hosts_[0]->outlierDetector().putHttpResponseCode(500);
+  hosts_[0]->outlierDetector()->putHttpResponseCode(500);
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
   loadRq(hosts_[1], 5, 500);
@@ -1650,7 +1650,7 @@ TEST_F(OutlierDetectorImplTest, EjectionActiveValueIsAccountedWithoutMetricStora
   EXPECT_CALL(checker_, check(hosts_[0]));
   EXPECT_CALL(*event_logger_, logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]),
                                        _, envoy::data::cluster::v3::CONSECUTIVE_5XX, true));
-  hosts_[0]->outlierDetector().putHttpResponseCode(500);
+  hosts_[0]->outlierDetector()->putHttpResponseCode(500);
   EXPECT_TRUE(hosts_[0]->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK));
 
   // Expect active helper_ has the value 1. However, helper is private and it cannot be tested.
@@ -2247,7 +2247,7 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   EventLoggerImpl event_logger(log_manager, "foo", time_system);
 
   StringViewSaver log1;
-  EXPECT_CALL(host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
 
   EXPECT_CALL(*file, write(absl::string_view(
                          "{\"type\":\"CONSECUTIVE_5XX\",\"cluster_name\":\"fake_cluster\","
@@ -2260,7 +2260,7 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   Json::Factory::loadFromString(log1);
 
   StringViewSaver log2;
-  EXPECT_CALL(host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
 
   EXPECT_CALL(*file, write(absl::string_view(
                          "{\"type\":\"CONSECUTIVE_5XX\",\"cluster_name\":\"fake_cluster\","
@@ -2276,8 +2276,8 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   monotonic_time = (time_system.monotonicTime() - std::chrono::seconds(30));
 
   StringViewSaver log3;
-  EXPECT_CALL(host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
-  EXPECT_CALL(host->outlier_detector_,
+  EXPECT_CALL(*host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_,
               successRate(DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin))
       .WillOnce(Return(0));
   EXPECT_CALL(detector,
@@ -2299,7 +2299,7 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   Json::Factory::loadFromString(log3);
 
   StringViewSaver log4;
-  EXPECT_CALL(host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
   EXPECT_CALL(*file,
               write(absl::string_view(
                   "{\"type\":\"CONSECUTIVE_5XX\",\"cluster_name\":\"fake_cluster\","
@@ -2311,8 +2311,8 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   Json::Factory::loadFromString(log4);
 
   StringViewSaver log5;
-  EXPECT_CALL(host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
-  EXPECT_CALL(host->outlier_detector_,
+  EXPECT_CALL(*host->outlier_detector_, lastUnejectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_,
               successRate(DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin))
       .WillOnce(Return(0));
   EXPECT_CALL(*file,
@@ -2327,7 +2327,7 @@ TEST(OutlierDetectionEventLoggerImplTest, All) {
   Json::Factory::loadFromString(log5);
 
   StringViewSaver log6;
-  EXPECT_CALL(host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
+  EXPECT_CALL(*host->outlier_detector_, lastEjectionTime()).WillOnce(ReturnRef(monotonic_time));
   EXPECT_CALL(*file,
               write(absl::string_view(
                   "{\"type\":\"CONSECUTIVE_5XX\",\"cluster_name\":\"fake_cluster\","
@@ -2358,7 +2358,7 @@ TEST(OutlierUtility, SRThreshold) {
 // a host.
 void errorReportTask(std::atomic<bool>* stop, HostSharedPtr host) {
   while (!*stop) {
-    host->outlierDetector().putHttpResponseCode(500);
+    host->outlierDetector()->putHttpResponseCode(500);
   }
 }
 

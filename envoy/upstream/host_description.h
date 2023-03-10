@@ -127,7 +127,7 @@ public:
   /**
    * @return the host's outlier detection monitor.
    */
-  virtual Outlier::DetectorHostMonitor& outlierDetector() const PURE;
+  virtual Outlier::DetectorHostMonitorPtr outlierDetector() const PURE;
 
   /**
    * @return the host's health checker monitor.

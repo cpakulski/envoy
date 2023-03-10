@@ -614,7 +614,7 @@ void UpstreamRequest::onPoolReady(std::unique_ptr<GenericUpstream>&& upstream,
     parent_.routeStatsContext()->stats().upstream_rq_total_.inc();
   }
 
-  host->outlierDetector().putResult(Upstream::Outlier::Result::LocalOriginConnectSuccess);
+  host->outlierDetector()->putResult(Upstream::Outlier::Result::LocalOriginConnectSuccess);
 
   onUpstreamHostSelected(host);
 

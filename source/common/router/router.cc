@@ -1164,7 +1164,7 @@ void Filter::updateOutlierDetection(Upstream::Outlier::Result result,
                                     UpstreamRequest& upstream_request,
                                     absl::optional<uint64_t> code) {
   if (upstream_request.upstreamHost()) {
-    upstream_request.upstreamHost()->outlierDetector().putResult(result, code);
+    upstream_request.upstreamHost()->outlierDetector()->putResult(result, code);
   }
 }
 
@@ -1455,9 +1455,9 @@ void Filter::onUpstreamHeaders(uint64_t response_code, Http::ResponseHeaderMapPt
   }
 
   if (grpc_status.has_value()) {
-    upstream_request.upstreamHost()->outlierDetector().putHttpResponseCode(grpc_to_http_status);
+    upstream_request.upstreamHost()->outlierDetector()->putHttpResponseCode(grpc_to_http_status);
   } else {
-    upstream_request.upstreamHost()->outlierDetector().putHttpResponseCode(response_code);
+    upstream_request.upstreamHost()->outlierDetector()->putHttpResponseCode(response_code);
   }
 
   if (headers->EnvoyImmediateHealthCheckFail() != nullptr) {
@@ -1646,7 +1646,7 @@ void Filter::onUpstreamComplete(UpstreamRequest& upstream_request) {
 
   if (config_.emit_dynamic_stats_ && !callbacks_->streamInfo().healthCheck() &&
       DateUtil::timePointValid(downstream_request_complete_time_)) {
-    upstream_request.upstreamHost()->outlierDetector().putResponseTime(response_time);
+    upstream_request.upstreamHost()->outlierDetector()->putResponseTime(response_time);
     const bool internal_request = Http::HeaderUtility::isEnvoyInternalRequest(*downstream_headers_);
 
     Http::CodeStats& code_stats = httpContext().codeStats();

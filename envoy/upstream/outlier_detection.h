@@ -112,7 +112,7 @@ public:
   virtual double successRate(SuccessRateMonitorType type) const PURE;
 };
 
-using DetectorHostMonitorPtr = std::unique_ptr<DetectorHostMonitor>;
+using DetectorHostMonitorPtr = std::shared_ptr<DetectorHostMonitor>;
 
 /**
  * Interface for an outlier detection engine. Uses per host data to determine which hosts in a

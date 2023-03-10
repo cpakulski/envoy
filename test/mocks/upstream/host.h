@@ -92,7 +92,7 @@ public:
   MOCK_METHOD(void, metadata, (MetadataConstSharedPtr));
   MOCK_METHOD(const ClusterInfo&, cluster, (), (const));
   MOCK_METHOD(bool, canCreateConnection, (Upstream::ResourcePriority), (const));
-  MOCK_METHOD(Outlier::DetectorHostMonitor&, outlierDetector, (), (const));
+  MOCK_METHOD(Outlier::DetectorHostMonitorPtr, outlierDetector, (), (const));
   MOCK_METHOD(HealthCheckHostMonitor&, healthChecker, (), (const));
   MOCK_METHOD(const std::string&, hostnameForHealthChecks, (), (const));
   MOCK_METHOD(const std::string&, hostname, (), (const));
@@ -112,7 +112,7 @@ public:
 
   std::string hostname_;
   Network::Address::InstanceConstSharedPtr address_;
-  testing::NiceMock<Outlier::MockDetectorHostMonitor> outlier_detector_;
+  std::shared_ptr<testing::NiceMock<Outlier::MockDetectorHostMonitor>> outlier_detector_;
   testing::NiceMock<MockHealthCheckHostMonitor> health_checker_;
   Network::UpstreamTransportSocketFactoryPtr socket_factory_;
   testing::NiceMock<MockClusterInfo> cluster_;
@@ -199,7 +199,7 @@ public:
   MOCK_METHOD(const std::string&, hostnameForHealthChecks, (), (const));
   MOCK_METHOD(const std::string&, hostname, (), (const));
   MOCK_METHOD(Network::UpstreamTransportSocketFactory&, transportSocketFactory, (), (const));
-  MOCK_METHOD(Outlier::DetectorHostMonitor&, outlierDetector, (), (const));
+  MOCK_METHOD(Outlier::DetectorHostMonitorPtr, outlierDetector, (), (const));
   MOCK_METHOD(void, setHealthChecker_, (HealthCheckHostMonitorPtr & health_checker));
   MOCK_METHOD(void, setOutlierDetector_, (Outlier::DetectorHostMonitorPtr & outlier_detector));
   MOCK_METHOD(void, setLastHcPassTime_, (MonotonicTime & last_hc_pass_time));
@@ -218,7 +218,7 @@ public:
 
   testing::NiceMock<MockClusterInfo> cluster_;
   Network::UpstreamTransportSocketFactoryPtr socket_factory_;
-  testing::NiceMock<Outlier::MockDetectorHostMonitor> outlier_detector_;
+  std::shared_ptr<testing::NiceMock<Outlier::MockDetectorHostMonitor>> outlier_detector_;
   HostStats stats_;
   LoadMetricStatsImpl load_metric_stats_;
   mutable Stats::TestUtil::TestSymbolTable symbol_table_;

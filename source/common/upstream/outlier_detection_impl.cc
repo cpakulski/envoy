@@ -771,7 +771,7 @@ void EventLoggerImpl::logEject(const HostDescriptionConstSharedPtr& host, Detect
   envoy::data::cluster::v3::OutlierDetectionEvent event;
   event.set_type(type);
 
-  absl::optional<MonotonicTime> time = host->outlierDetector().lastUnejectionTime();
+  absl::optional<MonotonicTime> time = host->outlierDetector()->lastUnejectionTime();
   setCommonEventParams(event, host, time);
 
   event.set_action(envoy::data::cluster::v3::EJECT);
@@ -789,7 +789,7 @@ void EventLoggerImpl::logEject(const HostDescriptionConstSharedPtr& host, Detect
     event.mutable_eject_success_rate_event()->set_cluster_success_rate_ejection_threshold(
         detector.successRateEjectionThreshold(monitor_type));
     event.mutable_eject_success_rate_event()->set_host_success_rate(
-        host->outlierDetector().successRate(monitor_type));
+        host->outlierDetector()->successRate(monitor_type));
   } else if ((type == envoy::data::cluster::v3::FAILURE_PERCENTAGE) ||
              (type == envoy::data::cluster::v3::FAILURE_PERCENTAGE_LOCAL_ORIGIN)) {
     const DetectorHostMonitor::SuccessRateMonitorType monitor_type =
@@ -797,7 +797,7 @@ void EventLoggerImpl::logEject(const HostDescriptionConstSharedPtr& host, Detect
             ? DetectorHostMonitor::SuccessRateMonitorType::ExternalOrigin
             : DetectorHostMonitor::SuccessRateMonitorType::LocalOrigin;
     event.mutable_eject_failure_percentage_event()->set_host_success_rate(
-        host->outlierDetector().successRate(monitor_type));
+        host->outlierDetector()->successRate(monitor_type));
   } else {
     event.mutable_eject_consecutive_event();
   }
@@ -811,7 +811,7 @@ void EventLoggerImpl::logEject(const HostDescriptionConstSharedPtr& host, Detect
 void EventLoggerImpl::logUneject(const HostDescriptionConstSharedPtr& host) {
   envoy::data::cluster::v3::OutlierDetectionEvent event;
 
-  absl::optional<MonotonicTime> time = host->outlierDetector().lastEjectionTime();
+  absl::optional<MonotonicTime> time = host->outlierDetector()->lastEjectionTime();
   setCommonEventParams(event, host, time);
 
   event.set_action(envoy::data::cluster::v3::UNEJECT);
@@ -833,7 +833,7 @@ void EventLoggerImpl::setCommonEventParams(envoy::data::cluster::v3::OutlierDete
   }
   event.set_cluster_name(host->cluster().name());
   event.set_upstream_url(host->address()->asString());
-  event.set_num_ejections(host->outlierDetector().numEjections());
+  event.set_num_ejections(host->outlierDetector()->numEjections());
   TimestampUtil::systemClockToTimestamp(time_source_.systemTime(), *event.mutable_timestamp());
 }
 
