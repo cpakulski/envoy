@@ -31,6 +31,7 @@ public:
    * @return CallbackHandlePtr a handle that can be used to remove the callback.
    */
   ABSL_MUST_USE_RESULT CallbackHandlePtr add(Callback callback) {
+    Thread::LockGuard lock(lock_);
     auto new_callback = std::make_unique<CallbackHolder>(*this, callback);
     callbacks_.emplace_back(new_callback.get());
     // Get the list iterator of added callback handle, which will be used to remove itself from
@@ -47,6 +48,7 @@ public:
    * @param args supplies the callback arguments.
    */
   void runCallbacks(CallbackArgs... args) {
+    Thread::LockGuard lock(lock_);
     for (auto it = callbacks_.cbegin(); it != callbacks_.cend();) {
       auto current = *(it++);
       current->cb_(args...);
@@ -62,13 +64,17 @@ public:
    * executed once for each callback.
    */
   void runCallbacksWith(std::function<std::tuple<CallbackArgs...>(void)> run_with) {
+    Thread::LockGuard lock(lock_);
     for (auto it = callbacks_.cbegin(); it != callbacks_.cend();) {
       auto cb = *(it++);
       std::apply(cb->cb_, run_with());
     }
   }
 
-  size_t size() const noexcept { return callbacks_.size(); }
+  size_t size() const noexcept {
+    Thread::LockGuard lock(lock_);
+    return callbacks_.size();
+  }
 
 private:
   struct CallbackHolder : public CallbackHandle {
@@ -96,7 +102,10 @@ private:
    * Remove a member update callback added via add().
    * @param handle supplies the callback handle to remove.
    */
-  void remove(typename std::list<CallbackHolder*>::iterator& it) { callbacks_.erase(it); }
+  void remove(typename std::list<CallbackHolder*>::iterator& it) {
+    Thread::LockGuard lock(lock_);
+    callbacks_.erase(it);
+  }
 
   std::list<CallbackHolder*> callbacks_;
   // This is a sentinel shared_ptr used for keeping track of whether the manager is still alive.
@@ -104,6 +113,7 @@ private:
   // the manager inherit from shared_from_this to avoid the manager having to be allocated inside
   // a shared_ptr at all call sites.
   const std::shared_ptr<bool> still_alive_{std::make_shared<bool>(true)};
+  mutable Thread::MutexBasicLockable lock_{};
 };
 
 /**
