@@ -2353,6 +2353,52 @@ TEST(OutlierUtility, SRThreshold) {
   EXPECT_EQ(52.0, success_rate_nums.ejection_threshold_);   //  ejection threshold
 }
 
+// Helper task used during concurrency validation.
+// If simply reports error code 500 to outlier detector attached to
+// a host.
+void errorReportTask(std::atomic<bool>* stop, HostSharedPtr host) {
+  while (!*stop) {
+    host->outlierDetector().putHttpResponseCode(500);
+  }
+}
+
+// Test launches a thread which reports errors to a host. In the meantime
+// the main thread constantly re-configures outlier detector attached to a host.
+TEST_F(OutlierDetectorImplTest, ThreadingTest) {
+  const std::string config = R"EOF(
+interval: 0.1s
+base_ejection_time: 10s
+consecutive_5xx: 3
+  )EOF";
+
+  envoy::config::cluster::v3::OutlierDetection outlier_detection;
+  TestUtility::loadFromYaml(config, outlier_detection);
+  addHosts({"tcp://127.0.0.1:80"});
+
+  std::atomic<bool> stop = false;
+
+  std::shared_ptr<DetectorImpl> detector(DetectorImpl::create(
+      cluster_, outlier_detection, dispatcher_, runtime_, time_system_, event_logger_, random_));
+
+  EXPECT_CALL(dispatcher_, createTimer_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(100), _))
+      .Times(testing::AnyNumber());
+
+  time_system_.setMonotonicTime(std::chrono::seconds(0));
+
+  // Start helper thread which reports error until told to stop.
+  std::thread error_report_thread(errorReportTask, &stop, hosts_[0]);
+
+  // Reconfigure outlier detector....
+  for (auto counter = 0; counter < 10000; counter++) {
+    std::shared_ptr<DetectorImpl> detector(DetectorImpl::create(
+        cluster_, outlier_detection, dispatcher_, runtime_, time_system_, event_logger_, random_));
+  }
+  stop = true;
+
+  error_report_thread.join();
+}
+
 } // namespace
 } // namespace Outlier
 } // namespace Upstream
