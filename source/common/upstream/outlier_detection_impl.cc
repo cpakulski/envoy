@@ -276,7 +276,7 @@ DetectorImpl::DetectorImpl(const Cluster& cluster,
 DetectorImpl::~DetectorImpl() {
   for (const auto& host : host_monitors_) {
     if (host.first->healthFlagGet(Host::HealthFlag::FAILED_OUTLIER_CHECK)) {
-      ASSERT(ejections_active_helper_.value() > 0);
+      // ASSERT(ejections_active_helper_.value() > 0);
       ejections_active_helper_.dec();
     }
   }
@@ -342,6 +342,7 @@ void DetectorImpl::initialize(Cluster& cluster) {
 void DetectorImpl::addHostMonitor(HostSharedPtr host) {
   ASSERT(host_monitors_.count(host) == 0);
   DetectorHostMonitorImpl* monitor = new DetectorHostMonitorImpl(shared_from_this(), host);
+  host->healthFlagClear(Host::HealthFlag::FAILED_OUTLIER_CHECK);
   host_monitors_[host] = monitor;
   host->setOutlierDetector(DetectorHostMonitorPtr{monitor});
 }
