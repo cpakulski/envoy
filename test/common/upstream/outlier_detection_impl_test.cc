@@ -2383,6 +2383,9 @@ consecutive_5xx: 3
   EXPECT_CALL(dispatcher_, createTimer_(_)).Times(testing::AnyNumber());
   EXPECT_CALL(*interval_timer_, enableTimer(std::chrono::milliseconds(100), _))
       .Times(testing::AnyNumber());
+  EXPECT_CALL(*event_logger_, logEject(std::static_pointer_cast<const HostDescription>(hosts_[0]),
+                                       _, envoy::data::cluster::v3::CONSECUTIVE_5XX, true))
+      .Times(testing::AnyNumber());
 
   time_system_.setMonotonicTime(std::chrono::seconds(0));
 
