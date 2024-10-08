@@ -91,6 +91,7 @@ std::pair<bool, absl::optional<std::string>> FilterConfig::processConfig(
     return std::make_pair<bool, absl::optional<std::string>>(false, fmt::format("Path must start with forward slash: {}", request_path));;
     }
 
+    new_path.path_template_.full_path_ = request_path;
     
     request_path.remove_prefix(1);
     std::vector<absl::string_view> segments = absl::StrSplit(request_path, '/');

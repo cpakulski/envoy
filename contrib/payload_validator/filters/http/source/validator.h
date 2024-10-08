@@ -99,6 +99,10 @@ struct PathTemplateValidator {
     std::vector<FixedPathSegmentValidator> fixed_segments_;
     // TODO: does it have to be a pointer?
     std::vector<std::unique_ptr<TemplatedPathSegmentValidator>> templated_segments_;
+
+    // Store the original path template before it is tokenized into fixed and templated
+    // parts. Used solely for logging.
+    std::string full_path_;
 };
 
 using AllowedPaths = absl::flat_hash_map<uint32_t, std::vector<std::unique_ptr<PathTemplateValidator>>>;

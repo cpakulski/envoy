@@ -69,7 +69,7 @@ ParamValidatorBase::validate(absl::string_view param_value) {
   } catch (...) {
     // Parameter contains unexpected characters which cause to_test to fail json syntax check.
     return std::make_pair<bool, absl::optional<std::string>>(false,
-                                                             fmt::format("Parameter {} contains unexpected characters", param_name_));
+                                                             fmt::format("Parameter '{}' contains unexpected characters or is of wrong type", param_name_));
   }
 
   try {
