@@ -6,7 +6,6 @@ namespace Envoy {
 namespace Extensions {
 namespace HttpFilters {
 namespace PayloadValidator {
-// namespace {
 
 std::string filter_header_config = R"EOF(
 name: envoy.filters.http.payload_validator
@@ -16,7 +15,8 @@ typed_config:
   max_size: 25
 )EOF";
 
-std::string filter1_header_config = R"EOF(
+std::string shadow_mode_enable_config = R"EOF(
+  enforce: false
 )EOF";
 
 std::string paths_header_config = R"EOF(
@@ -92,54 +92,27 @@ const std::string query_non_required_param3 = R"EOF(
           }
   )EOF";
 
-constexpr int methodName = 0;
- constexpr int    requestUrl = 1;
-constexpr int     addBody = 2;
- constexpr int    body = 3;
- constexpr int    expectedCode = 4;
-
 using TestVariables = std::tuple<std::string, std::string, bool, std::string, std::string>;
 using IntegrationTestRequestParams = std::tuple<std::vector<std::string>, std::string, TestVariables>;
 class PayloadValidatorIntegrationTest
     : public Envoy::HttpIntegrationTest,
       public ::testing::TestWithParam<IntegrationTestRequestParams> {
 public:
-  PayloadValidatorIntegrationTest()
-      : HttpIntegrationTest(Http::CodecType::HTTP1, Network::Address::IpVersion::v4) {
 
-#if 0
-    std::string filter_config = R"EOF(
-name: envoy.filters.http.payload_validator
-typed_config:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.payload_validator.v3.PayloadValidator
-  stat_prefix: test_p_v
-  max_size: 25
-  paths:
-  - path: "/test"
-    operations:
-    - method: POST  
-      request_body:
-        schema: |
-          {
-              "$schema": "http://json-schema.org/draft-07/schema#",
-              "title": "A person",
-              "properties": {
-                  "foo": {
-                      "type": "string",
-                      "minLength": 10,
-                      "maxLength": 10
-                  }
-              },
-              "required": [
-                  "foo"
-              ],
-              "type": "object"
-          }
-    - method: DELETE
-    - method: PUT
-)EOF";
-#endif
-        std::string filter_config = filter_header_config + paths_header_config; 
+static constexpr int methodName = 0;
+static  constexpr int    requestUrl = 1;
+static constexpr int     addBody = 2;
+static  constexpr int    body = 3;
+static  constexpr int    expectedCode = 4;
+
+  PayloadValidatorIntegrationTest()
+      : HttpIntegrationTest(Http::CodecType::HTTP1, Network::Address::IpVersion::v4) {}
+void init(bool shadow) {
+        std::string filter_config = filter_header_config;
+        if (shadow) {
+            filter_config += shadow_mode_enable_config;
+        }
+        filter_config += paths_header_config; 
     filter_config += fmt::format(R"EOF(
   - path: {}
     )EOF", std::get<1>(GetParam()));
@@ -152,6 +125,7 @@ typed_config:
 };
 
 TEST_P(PayloadValidatorIntegrationTest, RejectedRequests) {
+  init(false);
   const auto& test = std::get<2>(GetParam());
   codec_client_ = makeHttpConnection(lookupPort("http"));
   Http::TestRequestHeaderMapImpl request_headers{{":method", std::get<methodName>(test)},
@@ -192,6 +166,51 @@ TEST_P(PayloadValidatorIntegrationTest, RejectedRequests) {
                 "http.config_test.payload_validator.test_p_v.requests_validation_failed_enforced")
             ->value());
   }
+}
+
+
+// Test verifies shadow (non-enforcing) mode. In shadow mode, validator runs validation
+// checks, updates statistics, generates log messages but does not stop processing
+// when validation fails.
+TEST_P(PayloadValidatorIntegrationTest, RejectedRequestsShadow) {
+  init(true);
+  const auto& test = std::get<2>(GetParam());
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  Http::TestRequestHeaderMapImpl request_headers{{":method", std::get<methodName>(test)},
+                                                 {":path", std::get<requestUrl>(test)},
+                                                 {":scheme", "http"},
+                                                 {":authority", "host"}};
+
+  IntegrationStreamDecoderPtr response;
+  if (std::get<addBody>(test)) {
+    // Send body.
+    response = codec_client_->makeRequestWithBody(request_headers, std::get<body>(test));
+  } else {
+    response = codec_client_->makeHeaderOnlyRequest(request_headers);
+  }
+
+    waitForNextUpstreamRequest();
+    upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "200"}}, true);
+  ASSERT_TRUE(response->waitForEndStream());
+
+  EXPECT_TRUE(response->complete());
+
+  test_server_->waitForCounterEq("http.config_test.payload_validator.test_p_v.requests_validated",
+                                 1);
+  if (std::get<expectedCode>(test) != "200") {
+    // This request fails validation, so stats should be bumped up, even in non-enforcing mode.
+    EXPECT_EQ(
+        1, test_server_
+               ->counter("http.config_test.payload_validator.test_p_v.requests_validation_failed")
+               ->value());
+  }
+    // In non-enforcing mode, this should stay zero.
+    EXPECT_EQ(
+        0,
+        test_server_
+            ->counter(
+                "http.config_test.payload_validator.test_p_v.requests_validation_failed_enforced")
+            ->value());
 }
 
 // The following test cases test payload validation of requests.
@@ -243,22 +262,10 @@ INSTANTIATE_TEST_SUITE_P(
     ));
 
 // Validate responses.
-class ResponseValidatorIntegrationTest
-    : public Envoy::HttpIntegrationTest,
-      public ::testing::TestWithParam<
-          std::tuple<std::string, std::string, bool, std::string, std::string>> {
-public:
-  ResponseValidatorIntegrationTest()
-      : HttpIntegrationTest(Http::CodecType::HTTP1, Network::Address::IpVersion::v4) {
-
-    std::string filter_config = R"EOF(
-name: envoy.filters.http.payload_validator
-typed_config:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.payload_validator.v3.PayloadValidator
-  stat_prefix: test_p_v
-  paths:
-  - path: "/test"
-    operations:
+//
+//
+// Config parts used to construct a full config
+std::string get_method_config = R"EOF(
     - method: GET  
       responses:
       - http_status:
@@ -278,19 +285,47 @@ typed_config:
                 ],
                 "type": "object"
             }
-    - method: DELETE
-    - method: PUT
 )EOF";
+
+
+
+using ResponseTestVariables = std::tuple<std::string, std::string, bool, std::string>;
+using IntegrationTestResponseParams = std::tuple<std::vector<std::string>, ResponseTestVariables>;
+class ResponseValidatorIntegrationTest
+    : public Envoy::HttpIntegrationTest,
+      public ::testing::TestWithParam<IntegrationTestResponseParams> {
+public:
+ static constexpr int    replyCode = 0;
+ static constexpr int    expectedCode = 1;
+static constexpr int     addBody = 2;
+ static constexpr int    body = 3;
+
+  ResponseValidatorIntegrationTest()
+      : HttpIntegrationTest(Http::CodecType::HTTP1, Network::Address::IpVersion::v4) {
+    }
+void init(bool shadow) {
+        std::string filter_config = filter_header_config;
+        if (shadow) {
+            filter_config += shadow_mode_enable_config;
+        }
+        filter_config += paths_header_config; 
+    filter_config += R"EOF(
+  - path: "/test"
+    )EOF";
+    for (const auto& config_part : std::get<0>(GetParam())) {
+        filter_config += config_part;
+    }
     config_helper_.prependFilter(filter_config);
     initialize();
   }
 };
 
-TEST_P(ResponseValidatorIntegrationTest, RejectedRequests) {
-  const auto& param = GetParam();
+TEST_P(ResponseValidatorIntegrationTest, RejectedResponses) {
+  init(false);
+  const auto& test = std::get<1>(GetParam());
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
-  Http::TestRequestHeaderMapImpl request_headers{{":method", std::get<0>(param)},
+  Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"},
                                                  {":path", "/test"},
                                                  {":scheme", "http"},
                                                  {":authority", "host"}};
@@ -300,19 +335,19 @@ TEST_P(ResponseValidatorIntegrationTest, RejectedRequests) {
 
   waitForNextUpstreamRequest();
 
-  if (std::get<2>(GetParam())) {
+  if (std::get<addBody>(test)) {
     upstream_request_->encodeHeaders(
-        Http::TestResponseHeaderMapImpl{{":status", std::get<1>(param)}}, false);
-    upstream_request_->encodeData(std::get<4>(param), true);
+        Http::TestResponseHeaderMapImpl{{":status", std::get<replyCode>(test)}}, false);
+    upstream_request_->encodeData(std::get<body>(test), true);
   } else {
     // Send only headers
     upstream_request_->encodeHeaders(
-        Http::TestResponseHeaderMapImpl{{":status", std::get<1>(param)}}, true);
+        Http::TestResponseHeaderMapImpl{{":status", std::get<replyCode>(test)}}, true);
   }
   ASSERT_TRUE(response->waitForEndStream());
 
   EXPECT_TRUE(response->complete());
-  EXPECT_THAT(response->headers(), Http::HttpStatusIs(std::get<3>(param)));
+  EXPECT_THAT(response->headers(), Http::HttpStatusIs(std::get<expectedCode>(test)));
 
   test_server_->waitForCounterEq("http.config_test.payload_validator.test_p_v.responses_validated",
                                  1);
@@ -330,23 +365,68 @@ TEST_P(ResponseValidatorIntegrationTest, RejectedRequests) {
   }
 }
 
-// The following test cases test payload validation of requests.
-// Test cases target different logical paths within the filter,
-// not the payload validating library (one test case with wrong body
-// is enough to determine that payload validator was reached).
+// Run responses tests in shadow (non-enforcing) mode.
+TEST_P(ResponseValidatorIntegrationTest, RejectedResponsesShadow) {
+  init(true);
+  const auto& test = std::get<1>(GetParam());
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+
+  Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"},
+                                                 {":path", "/test"},
+                                                 {":scheme", "http"},
+                                                 {":authority", "host"}};
+
+  IntegrationStreamDecoderPtr response;
+  response = codec_client_->makeHeaderOnlyRequest(request_headers);
+
+  waitForNextUpstreamRequest();
+
+  if (std::get<addBody>(test)) {
+    upstream_request_->encodeHeaders(
+        Http::TestResponseHeaderMapImpl{{":status", std::get<replyCode>(test)}}, false);
+    upstream_request_->encodeData(std::get<body>(test), true);
+  } else {
+    // Send only headers
+    upstream_request_->encodeHeaders(
+        Http::TestResponseHeaderMapImpl{{":status", std::get<replyCode>(test)}}, true);
+  }
+  ASSERT_TRUE(response->waitForEndStream());
+
+  EXPECT_TRUE(response->complete());
+  EXPECT_THAT(response->headers(), Http::HttpStatusIs(std::get<replyCode>(test)));
+
+  test_server_->waitForCounterEq("http.config_test.payload_validator.test_p_v.responses_validated",
+                                 1);
+  if (response->headers().getStatusValue() != "200") {
+    EXPECT_EQ(
+        1, test_server_
+               ->counter("http.config_test.payload_validator.test_p_v.responses_validation_failed")
+               ->value());
+  }
+
+    // In shadow mode responses whic fail validation are still passed through.
+    EXPECT_EQ(
+        0,
+        test_server_
+            ->counter(
+                "http.config_test.payload_validator.test_p_v.responses_validation_failed_enforced")
+            ->value());
+}
+
+// The following test cases test payload validation of responses.
 INSTANTIATE_TEST_SUITE_P(ResponseValidatorIntegrationTestSuite, ResponseValidatorIntegrationTest,
                          ::testing::Values(
                              // Response to GET without body.
-                             std::make_tuple("GET", "200", false, "422", "{}"),
+    IntegrationTestResponseParams({operations_header_config, get_method_config}, ResponseTestVariables("200", "422", false, "{}")),
                              // Response to GET with incorrect body, but still in json format.
-                             std::make_tuple("GET", "200", true, "422", "{\"foo\": 1}"),
+    IntegrationTestResponseParams({operations_header_config, get_method_config}, ResponseTestVariables("200", "422", true, "{\"foo\": 1}")),
                              // Response to GET with incorrect body.
-                             std::make_tuple("GET", "200", true, "422", "blah}"),
+    IntegrationTestResponseParams({operations_header_config, get_method_config}, ResponseTestVariables("200", "422", true, "blah}")),
                              // Response to GET with not allowed response code 202.
-                             std::make_tuple("GET", "202", true, "422", ""),
+    IntegrationTestResponseParams({operations_header_config, get_method_config}, ResponseTestVariables("202", "422", true, "")),
                              // Response to GET with correct body.
-                             std::make_tuple("GET", "200", true, "200",
-                                             "{\"foo\":\"abcdefghij\"}")));
+    IntegrationTestResponseParams({operations_header_config, get_method_config}, ResponseTestVariables("200", "200", true, "{\"foo\":\"abcdefghij\"}"))
+));
 
 } // namespace PayloadValidator
 } // namespace HttpFilters

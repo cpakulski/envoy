@@ -118,6 +118,8 @@ std::pair<bool, absl::optional<std::string>>
 
   uint32_t maxSize() const { return max_size_; }
 
+  bool enforce() const {return enforce_;}
+
   Stats::Scope& scope_;
   std::shared_ptr<PayloadValidatorStats> stats_;
   std::string stat_prefix_;
@@ -129,6 +131,7 @@ public:
   std::vector<Path> paths_;
   std::shared_ptr<Operation> empty_{};
   uint32_t max_size_;
+  bool enforce_{true};
 };
 
 class FilterConfigFactory

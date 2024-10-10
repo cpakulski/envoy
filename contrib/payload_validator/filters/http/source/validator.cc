@@ -33,8 +33,7 @@ bool ParamValidatorBase::initialize(const std::string& schema) {
     return false;
   }
 
-  // Check if the type is integer.
-  // TODO: type can also be returned as array. This is not handled here yet.
+  // Check if the type is string. It requires quotes around the value.
     auto type = schema_as_json.find("type");
         if (type == schema_as_json.end()) {
         return false;

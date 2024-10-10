@@ -46,9 +46,10 @@ public:
 
   std::shared_ptr<PayloadValidatorStats> stats() const { return config_.stats(); }
 
-  //  std::pair<bool, absl::optional<std::string>> validateParams(absl::string_view path);
-
 private:
+  bool onRequestValidationFailure(absl::string_view, Http::Code);
+  bool onResponseValidationFailure(absl::string_view, Http::Code);
+
   FilterConfig& config_;
 
   std::shared_ptr<Operation> current_operation_;
@@ -57,6 +58,11 @@ private:
 
   Http::StreamDecoderFilterCallbacks* decoder_callbacks_{nullptr};
   Http::StreamEncoderFilterCallbacks* encoder_callbacks_{nullptr};
+
+  // This value detemines if validation should be performed.
+  // It is flipped to false after first validation error is detected 
+  // when running in non-enforcing mode.
+  bool validate_{true};
 };
 
 } // namespace PayloadValidator

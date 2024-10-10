@@ -78,6 +78,11 @@ std::pair<bool, absl::optional<std::string>> FilterConfig::processConfig(
 
   stat_prefix_ = config.stat_prefix();
 
+  
+  if (config.has_enforce()) {
+          enforce_ = config.enforce().value();
+        }
+
   if (config.paths().empty()) {
     return std::make_pair<bool, absl::optional<std::string>>(false, "At least one path must be configured");;
   }

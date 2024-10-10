@@ -57,5 +57,6 @@ message PathTransactions {
 message PayloadValidator {
   string stat_prefix = 1 [(validate.rules).string = {min_len: 1}];
   google.protobuf.UInt32Value max_size = 2;
-  repeated PathTransactions paths = 3 [(validate.rules).repeated = {min_items: 1}];
+  google.protobuf.BoolValue enforce = 3;
+  repeated PathTransactions paths = 4 [(validate.rules).repeated = {min_items: 1}];
 }
