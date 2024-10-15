@@ -189,6 +189,10 @@ Http::FilterHeadersStatus Filter::encodeHeaders(Http::ResponseHeaderMap& headers
   if (local_reply_) {
     return Http::FilterHeadersStatus::Continue;
   }
+  if(!current_operation_) {
+    return Http::FilterHeadersStatus::Continue;
+  }
+
 
   // get Status header
   absl::optional<uint64_t> status = Http::Utility::getResponseStatusOrNullopt(headers);
@@ -287,12 +291,12 @@ bool Filter::onRequestValidationFailure(absl::string_view error_message, Http::C
     ENVOY_LOG(info, message);
 
     if (config_.enforce()) {
+    config_.stats()->requests_validation_failed_enforced_.inc();
     local_reply_ = true;
     decoder_callbacks_->sendLocalReply(
         code,
         message,
         nullptr, absl::nullopt, "");
-    config_.stats()->requests_validation_failed_enforced_.inc();
     return true;
     } else {
         validate_ = false;
@@ -306,12 +310,12 @@ bool Filter::onResponseValidationFailure(absl::string_view error_message, Http::
     ENVOY_LOG(info, message);
 
     if (config_.enforce()) {
+    config_.stats()->responses_validation_failed_enforced_.inc();
     local_reply_ = true;
-    decoder_callbacks_->sendLocalReply(
+    encoder_callbacks_->sendLocalReply(
         code,
         message,
         nullptr, absl::nullopt, "");
-    config_.stats()->responses_validation_failed_enforced_.inc();
     return true;
     } else {
         validate_ = false;
