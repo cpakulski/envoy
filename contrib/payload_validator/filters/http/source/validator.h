@@ -28,6 +28,7 @@ public:
   virtual ~JSONValidator() = default;
 
 protected:
+  JSONValidator() : validator_(nullptr, nlohmann::json_schema::default_string_format_check) {}
   bool initializeValidator(const std::string& schema);
 
   json_validator validator_;

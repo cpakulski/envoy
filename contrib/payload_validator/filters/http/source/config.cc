@@ -24,55 +24,6 @@ const std::shared_ptr<JSONBodyValidator> Operation::getResponseValidator(uint32_
   return (*it).second;
 }
 
-#if 0 // should be deleted
-// TODO: this should be moved to validator.cc/h.
-bool JSONPayloadDescription::initialize(const std::string& schema) {
-  // Convert schema string to nlohmann::json object.
-  json schema_as_json;
-  try {
-    schema_as_json = json::parse(schema);
-  } catch (...) {
-    return false;
-  }
-  // Schema seems to be a valid json doc, but it does not mean it describes
-  // proper json schema.
-
-  active_ = true;
-  validator_.set_root_schema(schema_as_json);
-
-  return true;
-}
-
-std::pair<bool, absl::optional<std::string>>
-JSONPayloadDescription::validate(const Buffer::Instance& data) {
-  std::string message;
-  message.assign(std::string(
-      static_cast<char*>((const_cast<Buffer::Instance&>(data)).linearize(data.length())),
-      data.length()));
-
-  // Todo (reject if this is not json).
-  json rec_buf;
-  try {
-    rec_buf = json::parse(message);
-  } catch (const std::exception& e) {
-    // Payload is not valid JSON.
-    return std::make_pair<bool, absl::optional<std::string>>(false,
-                                                             absl::optional<std::string>(e.what()));
-  }
-
-  try {
-    validator_.validate(rec_buf);
-    // No error.
-  } catch (const std::exception& e) {
-    std::cerr << "Payload does not match the schema, here is why: " << e.what() << "\n";
-    return std::make_pair<bool, absl::optional<std::string>>(false,
-                                                             absl::optional<std::string>(e.what()));
-  }
-
-  return std::make_pair<bool, absl::optional<std::string>>(true, std::nullopt);
-}
-#endif // should be deleted
-
 std::pair<bool, absl::optional<std::string>> FilterConfig::processConfig(
     const envoy::extensions::filters::http::payload_validator::v3::PayloadValidator& config) {
 
@@ -133,12 +84,20 @@ std::pair<bool, absl::optional<std::string>> FilterConfig::processConfig(
 
     if (!operation.request_body().schema().empty()) {
 
-      if (!request_validator->initialize(operation.request_body().schema())) {
+    try {
+    bool init = request_validator->initialize(operation.request_body().schema());
+    if (!init) {
     return std::make_pair<bool, absl::optional<std::string>>(false, fmt::format("Invalid payload schema for method {} in path {}", 
     envoy::config::core::v3::RequestMethod_Name(operation.method()),
 request_path));
       }
+    } catch (const std::exception& e) {
+        return std::make_pair<bool, absl::optional<std::string>>(false, fmt::format("Invalid payload schema for method {} in path {}: {}", 
+    envoy::config::core::v3::RequestMethod_Name(operation.method()),
+request_path, e.what()));
     }
+    }
+
     new_operation->request_ = std::move(request_validator);
 
     // Iterate over response codes and their expected formats.
