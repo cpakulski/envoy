@@ -3,6 +3,7 @@
 #include <string>
 
 #include "envoy/registry/registry.h"
+#include "source/common/common/enum_to_int.h"
 
 #include "contrib/envoy/extensions/filters/http/payload_validator/v3/payload_validator.pb.validate.h"
 #include "contrib/payload_validator/filters/http/source/filter.h"
@@ -102,7 +103,7 @@ request_path, e.what()));
 
     // Iterate over response codes and their expected formats.
     for (const auto& response : operation.responses()) {
-      auto code = response.http_status().code();
+      auto code = enumToInt(response.http_status().code());
 
       if (!response.response_body().schema().empty()) {
         auto response_validator = std::make_shared<JSONBodyValidator>();
